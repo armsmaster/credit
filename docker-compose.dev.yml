@@ -1,0 +1,92 @@
+# Development overrides: hot reload for Python services, watch-builds for the UI.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#
+# * backend sources are bind-mounted; uvicorn/watchfiles restart on change;
+# * `frontend-dev` rebuilds the shell and microfrontends on change (vite build --watch),
+#   nginx containers serve the fresh dist — refresh the page to see changes;
+# * Postgres and Elasticsearch are published on localhost for debugging tools.
+# Polling is enabled because file events do not cross the Windows/macOS -> Linux VM boundary.
+
+x-dev-python: &dev-python
+  WATCHFILES_FORCE_POLLING: "true"
+  LOG_LEVEL: DEBUG
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:${DEV_PG_PORT:-5433}:5432"
+
+  elasticsearch:
+    ports:
+      - "127.0.0.1:${DEV_ES_PORT:-9200}:9200"
+
+  admin:
+    environment: *dev-python
+    volumes:
+      - ./backend/services/admin:/app
+      - ./backend/libs/cds-common/cds_common:/opt/cds-common/cds_common
+    command:
+      - sh
+      - -c
+      - alembic upgrade head && exec uvicorn admin_service.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app --reload-dir /opt/cds-common
+
+  scheduler:
+    environment: *dev-python
+    volumes:
+      - ./backend/services/admin:/app
+      - ./backend/libs/cds-common/cds_common:/opt/cds-common/cds_common
+    command: ["watchfiles", "--filter", "python", "python -m admin_service.scheduler", "/app", "/opt/cds-common"]
+
+  curves:
+    environment: *dev-python
+    volumes:
+      - ./backend/services/curves:/app
+      - ./backend/libs/cds-common/cds_common:/opt/cds-common/cds_common
+    command:
+      - sh
+      - -c
+      - alembic upgrade head && exec uvicorn curves_service.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app --reload-dir /opt/cds-common
+
+  curves-worker:
+    environment: *dev-python
+    volumes:
+      - ./backend/services/curves:/app
+      - ./backend/libs/cds-common/cds_common:/opt/cds-common/cds_common
+    command: ["watchfiles", "--filter", "python", "python -m curves_service.worker", "/app", "/opt/cds-common"]
+
+  frontend-dev:
+    image: ${DOCKERHUB_MIRROR:-docker.io}/library/node:22.12.0-alpine
+    working_dir: /src
+    environment:
+      VITE_WATCH_POLL: "1"
+      npm_config_registry: ${NPM_REGISTRY:-https://registry.npmjs.org/}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-}
+    volumes:
+      - ./frontend:/src
+      - fe-node-modules:/src/node_modules # Linux binaries, never the host's node_modules
+    command:
+      - sh
+      - -c
+      - >-
+        npm ci --no-audit --no-fund &&
+        (npm run watch -w apps/shell & npm run watch -w apps/mfe-admin & npm run watch -w apps/mfe-curves & wait)
+    restart: unless-stopped
+
+  shell:
+    volumes:
+      - ./frontend/apps/shell/dist:/usr/share/nginx/html:ro
+    depends_on: [frontend-dev]
+  mfe-admin:
+    volumes:
+      - ./frontend/apps/mfe-admin/dist:/usr/share/nginx/html:ro
+    depends_on: [frontend-dev]
+  mfe-curves:
+    volumes:
+      - ./frontend/apps/mfe-curves/dist:/usr/share/nginx/html:ro
+    depends_on: [frontend-dev]
+
+volumes:
+  fe-node-modules:

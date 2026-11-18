@@ -1,0 +1,32 @@
+{
+  "index_patterns": ["cds-logs-*"],
+  "priority": 100,
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "refresh_interval": "2s",
+      "index.lifecycle.name": "cds-logs-retention"
+    },
+    "mappings": {
+      "dynamic": false,
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "message": { "type": "text" },
+        "level": { "type": "keyword" },
+        "service": { "type": "keyword" },
+        "logger": { "type": "keyword" },
+        "request_id": { "type": "keyword" },
+        "user": { "type": "keyword" },
+        "container_name": { "type": "keyword" },
+        "source": { "type": "keyword" },
+        "method": { "type": "keyword" },
+        "path": { "type": "keyword" },
+        "status": { "type": "keyword" },
+        "duration_ms": { "type": "float", "ignore_malformed": true },
+        "task_id": { "type": "keyword" },
+        "exc_info": { "type": "text" }
+      }
+    }
+  }
+}

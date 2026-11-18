@@ -1,0 +1,301 @@
+# CDS pricing platform.
+#   python scripts/gen-env.py        # once: creates .env with random secrets
+#   docker compose up -d --build
+#   open http://localhost:8080
+#
+# Corporate contour: set DOCKERHUB_MIRROR / QUAY_MIRROR / PIP_INDEX_URL / NPM_REGISTRY /
+# HTTP(S)_PROXY in .env (see docs/corporate-setup.md).
+name: cds
+
+x-proxy-build-args: &proxy-build-args
+  DOCKERHUB_MIRROR: ${DOCKERHUB_MIRROR:-docker.io}
+  HTTP_PROXY: ${HTTP_PROXY:-}
+  HTTPS_PROXY: ${HTTPS_PROXY:-}
+  NO_PROXY: ${NO_PROXY:-}
+  http_proxy: ${HTTP_PROXY:-}
+  https_proxy: ${HTTPS_PROXY:-}
+  no_proxy: ${NO_PROXY:-}
+
+x-python-build: &python-build-args
+  <<: *proxy-build-args
+  PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+  PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+
+x-node-build: &node-build-args
+  <<: *proxy-build-args
+  NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
+
+x-proxy-env: &proxy-env
+  HTTP_PROXY: ${HTTP_PROXY:-}
+  HTTPS_PROXY: ${HTTPS_PROXY:-}
+  NO_PROXY: ${NO_PROXY:-}
+  http_proxy: ${HTTP_PROXY:-}
+  https_proxy: ${HTTPS_PROXY:-}
+  no_proxy: ${NO_PROXY:-}
+
+# stdout/stderr of every container -> Fluent Bit -> Elasticsearch (logs UI in the admin app).
+# `docker compose logs` keeps working thanks to Docker's dual logging.
+x-logging: &logging
+  driver: fluentd
+  options:
+    fluentd-address: 127.0.0.1:${FLUENTBIT_PORT:-24224}
+    fluentd-async: "true"
+    labels: com.docker.compose.service
+    tag: "cds.{{.Name}}"
+
+x-backend-env: &backend-env
+  <<: *proxy-env
+  CDS_TIMEZONE: ${CDS_TIMEZONE:-Europe/Moscow}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  KEYCLOAK_ISSUER: ${CDS_PUBLIC_URL:-http://localhost:8080}/auth/realms/cds
+  KEYCLOAK_INTERNAL_URL: http://keycloak:8080/auth
+  KEYCLOAK_REALM: cds
+  KEYCLOAK_AUDIENCE: cds-api
+
+services:
+  # ------------------------------------------------------------------ data
+  postgres:
+    image: ${DOCKERHUB_MIRROR:-docker.io}/library/postgres:16.6-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cds}
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?run scripts/gen-env.py to create .env}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+    restart: unless-stopped
+
+  db-init:
+    image: ${DOCKERHUB_MIRROR:-docker.io}/library/postgres:16.6-alpine
+    entrypoint: ["/bin/sh", "/init/db-init.sh"]
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-cds}
+      POSTGRES_SUPERUSER: ${POSTGRES_SUPERUSER:-postgres}
+      POSTGRES_SUPERUSER_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      BUSINESS_SERVICES: curves
+      DB_PASSWORD_KEYCLOAK: ${DB_PASSWORD_KEYCLOAK:?}
+      DB_PASSWORD_ADMIN: ${DB_PASSWORD_ADMIN:?}
+      DB_PASSWORD_CURVES: ${DB_PASSWORD_CURVES:?}
+    volumes:
+      - ./infra/postgres/db-init.sh:/init/db-init.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ------------------------------------------------------------------ identity
+  keycloak:
+    image: ${QUAY_MIRROR:-quay.io}/keycloak/keycloak:26.0.7
+    command: ["start", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-cds}
+      KC_DB_SCHEMA: keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${DB_PASSWORD_KEYCLOAK}
+      KC_HOSTNAME: ${CDS_PUBLIC_URL:-http://localhost:8080}/auth
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_HTTP_MANAGEMENT_RELATIVE_PATH: /
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      KC_LOG_CONSOLE_OUTPUT: json
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-kcadmin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?}
+      # placeholders used in infra/keycloak/realm-cds.json
+      CDS_PUBLIC_URL: ${CDS_PUBLIC_URL:-http://localhost:8080}
+      CDS_DEV_REDIRECT_URI: ${CDS_DEV_REDIRECT_URI:-http://localhost:5173/*}
+      KC_BACKEND_CLIENT_SECRET: ${KC_BACKEND_CLIENT_SECRET:?}
+      CDS_BOOTSTRAP_ADMIN_USERNAME: ${CDS_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      CDS_BOOTSTRAP_ADMIN_PASSWORD: ${CDS_BOOTSTRAP_ADMIN_PASSWORD:?}
+    volumes:
+      - ./infra/keycloak/realm-cds.json:/opt/keycloak/data/import/realm-cds.json:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"UP"' <&3
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    logging: *logging
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------ platform backend
+  admin:
+    build:
+      context: ./backend
+      dockerfile: services/admin/Dockerfile
+      args: *python-build-args
+    image: ${CDS_IMAGE_PREFIX:-cds}/admin:${CDS_VERSION:-latest}
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: admin
+      API_PREFIX: /api/admin
+      DATABASE_URL: postgresql+psycopg://cds_admin:${DB_PASSWORD_ADMIN}@postgres:5432/${POSTGRES_DB:-cds}
+      KEYCLOAK_CLIENT_ID: cds-backend
+      KEYCLOAK_CLIENT_SECRET: ${KC_BACKEND_CLIENT_SECRET}
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      CDS_PUBLIC_URL: ${CDS_PUBLIC_URL:-http://localhost:8080}
+      INVITE_TTL_DAYS: ${INVITE_TTL_DAYS:-7}
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    logging: *logging
+    restart: unless-stopped
+
+  scheduler:
+    image: ${CDS_IMAGE_PREFIX:-cds}/admin:${CDS_VERSION:-latest}
+    command: ["python", "-m", "admin_service.scheduler"]
+    environment:
+      <<: *backend-env
+      DATABASE_URL: postgresql+psycopg://cds_admin:${DB_PASSWORD_ADMIN}@postgres:5432/${POSTGRES_DB:-cds}
+    healthcheck:
+      disable: true
+    depends_on:
+      admin:
+        condition: service_healthy
+    logging: *logging
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------ business services
+  curves:
+    build:
+      context: ./backend
+      dockerfile: services/curves/Dockerfile
+      args: *python-build-args
+    image: ${CDS_IMAGE_PREFIX:-cds}/curves:${CDS_VERSION:-latest}
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: curves
+      API_PREFIX: /api/curves
+      DATABASE_URL: postgresql+psycopg://cds_curves:${DB_PASSWORD_CURVES}@postgres:5432/${POSTGRES_DB:-cds}
+    depends_on:
+      admin: # owns audit/tasks schemas
+        condition: service_healthy
+    logging: *logging
+    restart: unless-stopped
+
+  curves-worker:
+    image: ${CDS_IMAGE_PREFIX:-cds}/curves:${CDS_VERSION:-latest}
+    command: ["python", "-m", "curves_service.worker"]
+    environment:
+      <<: *backend-env
+      SERVICE_NAME: curves
+      DATABASE_URL: postgresql+psycopg://cds_curves:${DB_PASSWORD_CURVES}@postgres:5432/${POSTGRES_DB:-cds}
+    healthcheck:
+      disable: true
+    depends_on:
+      curves:
+        condition: service_healthy
+    logging: *logging
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------ frontend (shell + microfrontends)
+  shell:
+    build:
+      context: ./frontend
+      args:
+        <<: *node-build-args
+        APP: shell
+    image: ${CDS_IMAGE_PREFIX:-cds}/web-shell:${CDS_VERSION:-latest}
+    logging: *logging
+    restart: unless-stopped
+
+  mfe-admin:
+    build:
+      context: ./frontend
+      args:
+        <<: *node-build-args
+        APP: mfe-admin
+    image: ${CDS_IMAGE_PREFIX:-cds}/web-mfe-admin:${CDS_VERSION:-latest}
+    logging: *logging
+    restart: unless-stopped
+
+  mfe-curves:
+    build:
+      context: ./frontend
+      args:
+        <<: *node-build-args
+        APP: mfe-curves
+    image: ${CDS_IMAGE_PREFIX:-cds}/web-mfe-curves:${CDS_VERSION:-latest}
+    logging: *logging
+    restart: unless-stopped
+
+  gateway:
+    image: ${DOCKERHUB_MIRROR:-docker.io}/library/nginx:1.27.3-alpine
+    ports:
+      - "${GATEWAY_PORT:-8080}:80"
+    volumes:
+      - ./infra/gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/gateway/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging: *logging
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------ system logs
+  elasticsearch:
+    image: ${DOCKERHUB_MIRROR:-docker.io}/library/elasticsearch:8.15.3
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: ${ES_JAVA_OPTS:--Xms512m -Xmx512m}
+      cluster.routing.allocation.disk.threshold_enabled: "false"
+      action.destructive_requires_name: "true"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  es-setup:
+    image: ${DOCKERHUB_MIRROR:-docker.io}/curlimages/curl:8.11.1
+    entrypoint: ["/bin/sh", "/setup/setup.sh"]
+    environment:
+      LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-7}
+    volumes:
+      - ./infra/elasticsearch:/setup:ro
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: "no"
+
+  fluent-bit:
+    image: ${DOCKERHUB_MIRROR:-docker.io}/fluent/fluent-bit:3.1.9
+    ports:
+      # Docker daemon connects here (fluentd logging driver); bound to localhost only
+      - "127.0.0.1:${FLUENTBIT_PORT:-24224}:24224"
+    volumes:
+      - ./infra/fluent-bit/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ./infra/fluent-bit/parsers.conf:/fluent-bit/etc/parsers.conf:ro
+      - fluent-bit-buffer:/fluent-bit/buffer
+    depends_on:
+      es-setup:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  pg-data:
+  es-data:
+  fluent-bit-buffer:

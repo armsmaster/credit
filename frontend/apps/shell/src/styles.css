@@ -1,0 +1,97 @@
+:root {
+  --cds-brand: #1f4e79;
+  --cds-bg: #f4f6f9;
+}
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  font-family: Inter, 'Segoe UI', Roboto, Arial, sans-serif;
+  background: var(--cds-bg);
+  color: #1d2129;
+}
+.shell {
+  height: 100vh;
+}
+.shell-aside {
+  background: #fff;
+  border-right: 1px solid var(--el-border-color-light);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--cds-brand);
+  text-decoration: none;
+}
+.brand img {
+  width: 28px;
+  height: 28px;
+}
+.shell-menu {
+  border-right: none !important;
+}
+.remote-failures {
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+.shell-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+.header-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+.user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.user-name {
+  font-weight: 500;
+}
+.shell-main {
+  padding: 20px;
+  overflow-y: auto;
+}
+
+/* Shared helpers for microfrontends */
+.page-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.page-toolbar .spacer {
+  flex: 1;
+}
+.mono {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+}
+pre.json {
+  background: #f7f8fa;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  padding: 8px 12px;
+  max-height: 420px;
+  overflow: auto;
+  font-size: 12px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

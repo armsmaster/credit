@@ -1,0 +1,101 @@
+{
+  "realm": "cds",
+  "displayName": "CDS Pricing",
+  "enabled": true,
+  "sslRequired": "external",
+  "internationalizationEnabled": true,
+  "supportedLocales": ["ru", "en"],
+  "defaultLocale": "ru",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "passwordPolicy": "length(8) and notUsername",
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 28800,
+  "ssoSessionMaxLifespan": 43200,
+  "roles": {
+    "realm": [
+      { "name": "cds-viewer", "description": "Просмотр" },
+      {
+        "name": "cds-operator",
+        "description": "Оператор",
+        "composite": true,
+        "composites": { "realm": ["cds-viewer"] }
+      },
+      {
+        "name": "cds-admin",
+        "description": "Администратор",
+        "composite": true,
+        "composites": { "realm": ["cds-operator"] }
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "cds-web",
+      "name": "CDS web UI",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["${CDS_PUBLIC_URL}/*", "${CDS_DEV_REDIRECT_URI}"],
+      "webOrigins": ["+"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-cds-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "cds-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "cds-backend",
+      "name": "CDS backend (user management)",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_BACKEND_CLIENT_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-cds-backend",
+      "enabled": true,
+      "serviceAccountClientId": "cds-backend",
+      "clientRoles": {
+        "realm-management": ["manage-users", "view-users", "query-users", "view-realm"]
+      }
+    },
+    {
+      "username": "${CDS_BOOTSTRAP_ADMIN_USERNAME}",
+      "enabled": true,
+      "email": "admin@cds.local",
+      "emailVerified": true,
+      "firstName": "CDS",
+      "lastName": "Administrator",
+      "credentials": [
+        { "type": "password", "value": "${CDS_BOOTSTRAP_ADMIN_PASSWORD}", "temporary": true }
+      ],
+      "realmRoles": ["cds-admin"]
+    }
+  ]
+}
