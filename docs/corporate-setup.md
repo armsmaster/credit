@@ -67,10 +67,28 @@ NO_PROXY=localhost,127.0.0.1,postgres,keycloak,elasticsearch,admin,curves,curves
 * в рантайме они передаются в контейнеры бэкенда (на случай обращений к внешним API);
 * **важно**: `NO_PROXY` должен содержать имена всех внутренних сервисов compose, иначе
   межсервисные вызовы (проверка токенов, Keycloak Admin API, Elasticsearch) пойдут в прокси.
-  При добавлении сервиса допишите его имя.
+  При добавлении сервиса допишите его имя;
+* **важно**: туда же — домен внутренних зеркал (`.corp.local` в примере), иначе pip и npm
+  пойдут к Nexus через прокси;
+* если все зависимости берутся из внутренних зеркал, прокси при сборке не нужен вовсе —
+  оставьте `HTTP_PROXY`/`HTTPS_PROXY` пустыми;
+* прокси должен быть доступен **изнутри контейнера**: `127.0.0.1` там — сам контейнер.
+  Для прокси, запущенного на вашей машине (cntlm, px), используйте `host.docker.internal`.
 
 Docker-демону прокси для `docker pull` настраивается отдельно (systemd drop-in
 `/etc/systemd/system/docker.service.d/http-proxy.conf` или настройки Docker Desktop).
+Прокси из настроек Docker Desktop (Settings → Resources → Proxies) Docker тоже подставляет
+в контейнеры — внесите домен зеркал и в его список исключений.
+
+### Типовая ошибка
+
+```
+WARNING: Retrying ... ProxyError('Cannot connect to proxy.', TimeoutError('timed out')): /repository/pypi-proxy/simple/fastapi/
+ERROR: No matching distribution found for fastapi==0.115.6
+```
+
+pip обращается к зеркалу через недоступный из контейнера прокси. Добавьте домен зеркала
+в `NO_PROXY` (или очистите `HTTP_PROXY`/`HTTPS_PROXY`) и повторите `docker compose up -d --build`.
 
 ## 5. Внутренние сертификаты
 
