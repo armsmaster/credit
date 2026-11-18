@@ -24,8 +24,16 @@ QUAY_MIRROR=nexus.corp.local:8443/quay
 ```
 
 Список используемых образов: `postgres:16.6-alpine`, `nginx:1.27.3-alpine`, `python:3.12.8-slim`,
-`node:22.12.0-alpine`, `elasticsearch:8.15.3`, `fluent/fluent-bit:3.1.9`, `curlimages/curl:8.11.1`,
-`quay.io/keycloak/keycloak:26.0.7`.
+`node:22.12.0-alpine`, `elasticsearch:8.15.3`, `fluent/fluent-bit:3.1.9`,
+`quay.io/keycloak/keycloak:26.0.7`. Проверить, что зеркало отдаёт их все, можно заранее:
+
+```bash
+docker compose pull --ignore-buildable
+```
+
+Если прокси-репозиторий отвечает `not found` на конкретный образ при том, что остальные качаются,
+обычно образ не разрешён политикой репозитория (или тег не закэширован) — попросите
+администраторов Nexus/Harbor открыть его.
 
 Собственные образы именуются `${CDS_IMAGE_PREFIX}/<service>:${CDS_VERSION}` — задайте
 `CDS_IMAGE_PREFIX=registry.corp.local/cds`, соберите и опубликуйте их из CI

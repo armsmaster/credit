@@ -270,7 +270,8 @@ services:
     restart: unless-stopped
 
   es-setup:
-    image: ${DOCKERHUB_MIRROR:-docker.io}/curlimages/curl:8.11.1
+    # Reuses the elasticsearch image (it ships curl): one image less to mirror.
+    image: ${DOCKERHUB_MIRROR:-docker.io}/library/elasticsearch:8.15.3
     entrypoint: ["/bin/sh", "/setup/setup.sh"]
     environment:
       LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-7}
