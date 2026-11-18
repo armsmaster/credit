@@ -156,3 +156,6 @@ docker compose run --rm --no-deps -u root curves sh -c "pip install -q pytest==8
 ## Корпоративный контур
 
 Зеркала Docker Hub / quay.io, PyPI и npm, HTTP(S)-прокси — см. [docs/corporate-setup.md](docs/corporate-setup.md).
+
+Альтернатива без сборки в контуре: образы собираются там, где есть интернет, публикуются в Docker Hub
+и запускаются через прокси Docker Hub — см. [docs/deploy-prebuilt-images.md](docs/deploy-prebuilt-images.md).

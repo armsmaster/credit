@@ -35,9 +35,10 @@ docker compose pull --ignore-buildable
 обычно образ не разрешён политикой репозитория (или тег не закэширован) — попросите
 администраторов Nexus/Harbor открыть его.
 
-Собственные образы именуются `${CDS_IMAGE_PREFIX}/<service>:${CDS_VERSION}` — задайте
-`CDS_IMAGE_PREFIX=registry.corp.local/cds`, соберите и опубликуйте их из CI
-(`docker compose build && docker compose push`), а на стендах запускайте `docker compose up -d --no-build`.
+Собственные образы именуются `${CDS_IMAGE_PREFIX}/cds-<service>:${CDS_VERSION}` — задайте
+`CDS_IMAGE_PREFIX=registry.corp.local/cds`, соберите и опубликуйте их из CI, а на стендах
+запускайте `docker compose pull && docker compose up -d --no-build`. Тот же приём с Docker Hub
+вместо внутреннего реестра — в [deploy-prebuilt-images.md](deploy-prebuilt-images.md).
 
 ## 2. Python-пакеты
 
