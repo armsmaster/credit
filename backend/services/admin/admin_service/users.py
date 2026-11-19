@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
@@ -17,6 +17,7 @@ from cds_common.auth import Principal, Role, require_admin
 from cds_common.db import get_session
 from cds_common.errors import AppError, Conflict, NotFound
 
+from .auth_api import start_session
 from .config import AdminSettings
 from .keycloak import KeycloakAdmin
 from .models import Invitation
@@ -303,5 +304,11 @@ def invitation_info(token: str, svc: UserService = Depends(get_service)):
 
 
 @public_router.post("/public/invitations/{token}/accept", response_model=InvitationInfo)
-def accept_invite(token: str, data: AcceptInvite, svc: UserService = Depends(get_service)):
-    return svc.accept_invite(token, data.password)
+def accept_invite(token: str, data: AcceptInvite, request: Request, response: Response, svc: UserService = Depends(get_service)):
+    info = svc.accept_invite(token, data.password)
+    # Log the user straight in: the session cookie lets the UI open without a second login.
+    try:
+        start_session(request, response, request.app.state.keycloak_auth.password(info.username, data.password))
+    except AppError:
+        pass  # the password is set; the user can still log in on the login page
+    return info

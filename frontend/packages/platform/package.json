@@ -6,7 +6,6 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "peerDependencies": {
-    "keycloak-js": "*",
     "vue": "*",
     "vue-router": "*"
   }

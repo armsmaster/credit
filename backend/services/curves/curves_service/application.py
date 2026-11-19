@@ -13,6 +13,7 @@ from dataclasses import asdict
 from datetime import date, timedelta
 from typing import Any
 
+import numpy as np
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, load_only
@@ -22,7 +23,7 @@ from cds_common.auth import Principal
 from cds_common.errors import AppError, Conflict, NotFound
 
 from .config import CurvesSettings
-from .domain.calibration import CalibrationParams, CalibrationResult, calibrate
+from .domain.calibration import CalibrationParams, CalibrationResult, calibrate, par_curve
 from .domain.conventions import DayCount, SwapConventions
 from .domain.curve import Compounding, DiscountCurve
 from .domain.quotes import InputMode, QuoteError, parse_quotes
@@ -47,6 +48,23 @@ def conventions_of(defn: CurveDefinition) -> SwapConventions:
 
 def effective_params(defn: CurveDefinition, overrides: dict[str, Any] | None = None) -> CalibrationParams:
     return CalibrationParams().with_overrides(defn.default_params).with_overrides(overrides)
+
+
+def with_linear_par(result: dict[str, Any]) -> dict[str, Any]:
+    """Par curve of a stored result = adjusted mids linearly interpolated between tenors.
+
+    Applied on read, so curves saved before this rule are shown the same way as new ones
+    without rewriting immutable history (par is derived presentation data, not an input).
+    """
+    fitted, nodes = result.get("fitted") or [], result.get("nodes") or []
+    if not fitted or not nodes:
+        return result
+    values = par_curve(
+        np.array([n["t"] for n in nodes], dtype=float),
+        np.array([f["t"] for f in fitted], dtype=float),
+        np.array([f["model"] for f in fitted], dtype=float),
+    )
+    return {**result, "nodes": [{**n, "par": v} for n, v in zip(nodes, values)]}
 
 
 def result_to_dict(res: CalibrationResult, conv: SwapConventions) -> dict[str, Any]:

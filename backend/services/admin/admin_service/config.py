@@ -11,6 +11,8 @@ class AdminSettings(CommonSettings):
 
     keycloak_client_id: str = "cds-backend"
     keycloak_client_secret: str = ""
+    # public client whose password/refresh grants back our own login page
+    keycloak_web_client_id: str = "cds-web"
 
     elasticsearch_url: str = "http://elasticsearch:9200"
     logs_index_pattern: str = "cds-logs-*"

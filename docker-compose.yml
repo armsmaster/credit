@@ -111,7 +111,6 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?}
       # placeholders used in infra/keycloak/realm-cds.json
       CDS_PUBLIC_URL: ${CDS_PUBLIC_URL:-http://localhost:8080}
-      CDS_DEV_REDIRECT_URI: ${CDS_DEV_REDIRECT_URI:-http://localhost:5173/*}
       KC_BACKEND_CLIENT_SECRET: ${KC_BACKEND_CLIENT_SECRET:?}
       CDS_BOOTSTRAP_ADMIN_USERNAME: ${CDS_BOOTSTRAP_ADMIN_USERNAME:-admin}
       CDS_BOOTSTRAP_ADMIN_PASSWORD: ${CDS_BOOTSTRAP_ADMIN_PASSWORD:?}
@@ -134,6 +133,21 @@ services:
     logging: *logging
     restart: unless-stopped
 
+  # Brings an already imported realm up to date (idempotent, runs on every `up`).
+  keycloak-config:
+    image: ${QUAY_MIRROR:-quay.io}/keycloak/keycloak:26.0.7
+    entrypoint: ["/bin/bash", "/config/configure.sh"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-kcadmin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?}
+    volumes:
+      - ./infra/keycloak/configure.sh:/config/configure.sh:ro
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    logging: *logging
+    restart: "no"
+
   # ------------------------------------------------------------------ platform backend
   admin:
     build:
@@ -154,6 +168,9 @@ services:
     depends_on:
       db-init:
         condition: service_completed_successfully
+      keycloak-config: # login needs the realm settings; start anyway if it fails (see its logs)
+        condition: service_completed_successfully
+        required: false
     logging: *logging
     restart: unless-stopped
 

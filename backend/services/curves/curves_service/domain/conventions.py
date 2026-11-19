@@ -92,9 +92,6 @@ class SwapConventions:
         offsets = list(range(months, 0, -freq))[::-1]
         return [add_months(start, k) for k in offsets]
 
-    def payment_dates_for_months(self, start: date, months: int) -> list[date]:
-        return self.payment_dates(start, Tenor(months, "M"))
-
 
 def months_to_cover(start: date, end: date) -> int:
     """Smallest k such that start + k months >= end."""

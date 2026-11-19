@@ -10,7 +10,7 @@ from cds_common.auth import Principal, require_operator, require_viewer
 from cds_common.db import get_session
 from cds_common.tasks import Trigger, enqueue
 
-from .application import CurvesApp, effective_params
+from .application import CurvesApp, effective_params, with_linear_par
 from .domain.calibration import CalibrationParams
 from .domain.curve import Compounding
 from .domain.quotes import InputMode
@@ -76,7 +76,7 @@ def _snapshot_out(code: str, row: CurveState | CurveHistory) -> SnapshotOut:
         quotes=row.quotes,
         params=row.params,
         conventions=row.conventions,
-        result=row.result,
+        result=with_linear_par(row.result),
         comment=row.comment,
         author=row.saved_by if is_state else row.created_by,
         saved_at=row.saved_at if is_state else row.created_at,

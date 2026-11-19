@@ -1,14 +1,14 @@
 /**
  * Contract between the shell (host) and microfrontends.
  *
- * The shell authenticates the user (Keycloak) and publishes a Platform object;
+ * The shell authenticates the user (own login page, see auth.ts) and publishes a Platform object;
  * every microfrontend reads it with getPlatform(). A microfrontend exposes a
  * `./manifest` module (MfeManifest) through Module Federation.
  */
 import type { RouteRecordRaw } from 'vue-router'
 
 export { ApiError, createHttp, type Http } from './http'
-export { createPlatform, type PlatformConfig } from './auth'
+export { createPlatform, firstLogin, login } from './auth'
 export * from './format'
 
 export enum Role {

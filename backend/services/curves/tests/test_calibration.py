@@ -150,3 +150,27 @@ def test_bid_ask_penalty_keeps_fit_inside_spread():
     res = calibrate(AS_OF, quotes(), CONV, CalibrationParams(smoothness=100, bid_ask_penalty=1000,
                                                              max_avg_deviation_bp=50, max_point_deviation_bp=50))
     assert res.stats["outside_spread"] == 0
+
+
+def test_par_curve_is_linear_between_quoted_tenors():
+    res = calibrate(AS_OF, quotes(), CONV, CalibrationParams())
+    fit = {f.tenor: f for f in res.fitted}
+    a, b = fit["1Y"], fit["2Y"]
+    for n in res.nodes:
+        if n.months is not None and 12 < n.months < 18:  # between 1Y and 18M quotes
+            c = fit["18M"]
+            expected = a.model + (c.model - a.model) * (n.t - a.t) / (c.t - a.t)
+            assert n.par == pytest.approx(expected, abs=1e-9)
+    assert b.model == pytest.approx(next(n.par for n in res.nodes if n.months == 24), abs=1e-9)
+
+
+def test_with_linear_par_fixes_curves_saved_with_old_par():
+    from curves_service.application import result_to_dict, with_linear_par
+
+    stored = result_to_dict(calibrate(AS_OF, quotes(), CONV, CalibrationParams()), CONV)
+    for n in stored["nodes"]:  # simulate the old, DF-derived par values
+        n["par"] = None if n["par"] is None else n["par"] + 0.123
+    fixed = with_linear_par(stored)
+    fresh = result_to_dict(calibrate(AS_OF, quotes(), CONV, CalibrationParams()), CONV)
+    assert [n["par"] for n in fixed["nodes"]] == pytest.approx([n["par"] for n in fresh["nodes"]], abs=1e-12)
+    assert stored["nodes"][5]["par"] != fixed["nodes"][5]["par"]  # input not mutated

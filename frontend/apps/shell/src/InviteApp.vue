@@ -10,9 +10,9 @@
         <el-result icon="warning" :title="statusTitle" sub-title="Попросите администратора выпустить новую ссылку." />
       </template>
       <template v-else-if="done">
-        <el-result icon="success" title="Пароль установлен" :sub-title="`Войдите под логином ${info?.username}`">
+        <el-result icon="success" title="Пароль установлен" :sub-title="`Ваш логин: ${info?.username}`">
           <template #extra>
-            <el-button type="primary" @click="goLogin">Войти</el-button>
+            <el-button type="primary" @click="goLogin">Перейти в систему</el-button>
           </template>
         </el-result>
       </template>

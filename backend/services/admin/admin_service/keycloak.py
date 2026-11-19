@@ -1,4 +1,9 @@
-"""Minimal Keycloak Admin REST client (service account of the cds-backend client)."""
+"""Keycloak clients used by the admin service.
+
+* KeycloakAuth  — user sessions for our own login page (password / refresh grants of the
+  public client cds-web, called over the internal network; the browser never talks to Keycloak);
+* KeycloakAdmin — Admin REST API with the service account of the cds-backend client.
+"""
 from __future__ import annotations
 
 import logging
@@ -11,6 +16,74 @@ import httpx
 from cds_common.errors import AppError, Conflict, NotFound, UpstreamError
 
 log = logging.getLogger(__name__)
+
+
+class AuthError(AppError):
+    status_code = 401
+    code = "auth_failed"
+
+    def __init__(self, detail: str, *, code: str, status_code: int):
+        super().__init__(detail, code=code)
+        self.status_code = status_code
+
+
+# Keycloak error_description -> (code, HTTP status, message for the user)
+_GRANT_ERRORS = {
+    "Invalid user credentials": ("invalid_credentials", 401, "Неверный логин или пароль"),
+    "Account disabled": ("account_disabled", 403, "Учётная запись заблокирована. Обратитесь к администратору"),
+    "Account temporarily disabled": ("account_locked", 423, "Слишком много неудачных попыток входа. Попробуйте позже"),
+    # Returned only when the password is correct but a required action is pending (temporary password).
+    "Account is not fully set up": ("password_change_required", 409, "Нужно задать новый пароль"),
+    # Realm imported before the own login page: keycloak-config has not run (or failed).
+    "Client not allowed for direct access grants": (
+        "login_not_configured", 503,
+        "Вход не настроен в Keycloak: администратору нужно выполнить docker compose up (задача keycloak-config)",
+    ),
+}
+
+
+class KeycloakAuth:
+    def __init__(self, base_url: str, realm: str, client_id: str):
+        oidc = f"{base_url}/realms/{realm}/protocol/openid-connect"
+        self._token_url = f"{oidc}/token"
+        self._logout_url = f"{oidc}/logout"
+        self._client_id = client_id
+
+    def _post(self, url: str, data: dict[str, str]) -> httpx.Response:
+        try:
+            return httpx.post(url, data={"client_id": self._client_id, **data}, timeout=10.0)
+        except httpx.HTTPError as exc:
+            raise UpstreamError(f"Сервис авторизации недоступен: {exc}") from None
+
+    def password(self, username: str, password: str) -> dict[str, Any]:
+        resp = self._post(self._token_url, {"grant_type": "password", "username": username, "password": password, "scope": "openid"})
+        if resp.status_code == 200:
+            return resp.json()
+        description = self._description(resp)
+        code, status, message = _GRANT_ERRORS.get(description, ("auth_failed", 502, "Ошибка сервиса авторизации"))
+        if status == 502:
+            log.error("Keycloak password grant failed: %s %s", resp.status_code, resp.text[:300])
+        raise AuthError(message, code=code, status_code=status)
+
+    def refresh(self, refresh_token: str) -> dict[str, Any]:
+        resp = self._post(self._token_url, {"grant_type": "refresh_token", "refresh_token": refresh_token})
+        if resp.status_code == 200:
+            return resp.json()
+        if resp.status_code >= 500:
+            raise UpstreamError("Сервис авторизации недоступен")
+        raise AuthError("Сессия истекла, войдите снова", code="session_expired", status_code=401)
+
+    def logout(self, refresh_token: str) -> None:
+        resp = self._post(self._logout_url, {"refresh_token": refresh_token})
+        if resp.status_code >= 300:
+            log.warning("Keycloak logout returned %s", resp.status_code)
+
+    @staticmethod
+    def _description(resp: httpx.Response) -> str:
+        try:
+            return resp.json().get("error_description", "")
+        except ValueError:
+            return ""
 
 
 class KeycloakAdmin:
@@ -80,6 +153,12 @@ class KeycloakAdmin:
 
     def get_user(self, user_id: str) -> dict:
         return self._request("GET", f"/users/{user_id}").json()
+
+    def find_user(self, username: str) -> dict:
+        users = self._request("GET", "/users", params={"username": username, "exact": "true"}).json()
+        if not users:
+            raise NotFound("Пользователь не найден")
+        return users[0]
 
     def create_user(self, representation: dict) -> str:
         resp = self._request("POST", "/users", json=representation)

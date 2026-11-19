@@ -2,31 +2,40 @@ import * as Icons from '@element-plus/icons-vue'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import ru from 'element-plus/es/locale/lang/ru'
-import { createApp } from 'vue'
+import { createApp, type Component } from 'vue'
 
 import { createPlatform, setPlatform } from '@cds/platform'
 
 import App from './App.vue'
 import InviteApp from './InviteApp.vue'
+import LoginApp from './LoginApp.vue'
 import { loadRemotes, type RemoteConfig } from './remotes'
 import { buildRouter } from './router'
 import './styles.css'
 
 interface ShellConfig {
-  keycloak: { url: string; realm: string; clientId: string }
   remotes: RemoteConfig[]
 }
 
-async function bootstrap(): Promise<void> {
-  const config: ShellConfig = await fetch('/config.json', { cache: 'no-cache' }).then((r) => r.json())
+function mountStandalone(component: Component): void {
+  createApp(component).use(ElementPlus, { locale: ru }).mount('#app')
+}
 
+async function bootstrap(): Promise<void> {
   // The first-login page is public: the invitation token is the credential.
   if (window.location.pathname.startsWith('/invite/')) {
-    createApp(InviteApp).use(ElementPlus, { locale: ru }).mount('#app')
+    mountStandalone(InviteApp)
     return
   }
 
-  const platform = await createPlatform({ keycloak: config.keycloak })
+  const [config, platform] = await Promise.all([
+    fetch('/config.json', { cache: 'no-cache' }).then((r) => r.json() as Promise<ShellConfig>),
+    createPlatform(),
+  ])
+  if (!platform) {
+    mountStandalone(LoginApp) // no session: own login page at the requested URL
+    return
+  }
   setPlatform(platform)
 
   const { manifests, failures } = await loadRemotes(config.remotes)

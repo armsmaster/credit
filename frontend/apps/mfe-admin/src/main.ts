@@ -10,7 +10,13 @@ import { createPlatform, setPlatform } from '@cds/platform'
 
 import manifest from './manifest'
 
-const platform = await createPlatform({ keycloak: { url: '/auth', realm: 'cds', clientId: 'cds-web' } })
+// The session cookie is shared with the main UI: log in there first (same host, any port).
+const platform = await createPlatform()
+if (!platform) {
+  document.getElementById('app')!.innerHTML =
+    '<p style="font-family:sans-serif;padding:32px">Нет сессии. Войдите в основной UI (через gateway) и обновите страницу.</p>'
+  throw new Error('Not authenticated')
+}
 setPlatform(platform)
 
 const router = createRouter({

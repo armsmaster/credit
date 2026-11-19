@@ -30,11 +30,11 @@
 docker login
 ```
 
-Соберите и опубликуйте образы (`<user>` — ваш логин Docker Hub, `0.1.0` — версия):
+Соберите и опубликуйте образы (`<user>` — ваш логин Docker Hub, `0.2.0` — версия):
 
 ```powershell
 $env:CDS_IMAGE_PREFIX = "docker.io/<user>"
-$env:CDS_VERSION = "0.1.0"
+$env:CDS_VERSION = "0.2.0"
 docker compose build admin curves shell mfe-admin mfe-curves
 docker compose push admin curves shell mfe-admin mfe-curves
 ```
@@ -42,11 +42,11 @@ docker compose push admin curves shell mfe-admin mfe-curves
 То же в bash:
 
 ```bash
-CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.1.0 docker compose build admin curves shell mfe-admin mfe-curves
+CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.2.0 docker compose build admin curves shell mfe-admin mfe-curves
 ```
 
 ```bash
-CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.1.0 docker compose push admin curves shell mfe-admin mfe-curves
+CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.2.0 docker compose push admin curves shell mfe-admin mfe-curves
 ```
 
 `push` перечисляет сервисы явно: остальные сервисы используют чужие образы, их публиковать не нужно.
@@ -60,7 +60,7 @@ CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.1.0 docker compose push admin cu
 ```env
 DOCKERHUB_MIRROR=nexus.corp.local/dockerhub
 CDS_IMAGE_PREFIX=nexus.corp.local/dockerhub/<user>
-CDS_VERSION=0.1.0
+CDS_VERSION=0.2.0
 ```
 
 Скачайте образы и запустите без сборки:
@@ -73,7 +73,57 @@ docker compose pull
 docker compose up -d --no-build
 ```
 
-Обновление на новую версию: поменять `CDS_VERSION` в `.env` и повторить обе команды.
+## Обновление с сохранением данных
+
+Данные живут в томах Docker (`pg-data` — база с кривыми, журналом, пользователями Keycloak;
+`es-data` — логи). Обычное обновление их не трогает. **Никогда не используйте `docker compose down -v`**
+на системе с данными: ключ `-v` удаляет тома.
+
+1. Резервная копия базы — в ней и данные сервисов, и пользователи Keycloak (PowerShell или bash;
+   в Git Bash на Windows сначала выполните `export MSYS_NO_PATHCONV=1`). Файл появится в текущей папке:
+   ```bash
+   docker compose exec -T postgres pg_dump -U postgres -d cds -Fc -f /tmp/cds-backup.dump
+   ```
+   ```bash
+   docker compose cp postgres:/tmp/cds-backup.dump ./cds-backup.dump
+   ```
+2. Обновите файлы репозитория (compose и `infra/`) до той же версии, что и образы.
+   `.env` не перезаписывайте — поменяйте в нём только `CDS_VERSION`.
+3. Скачайте образы и перезапустите — без `down`:
+   ```bash
+   docker compose pull
+   ```
+   ```bash
+   docker compose up -d --no-build
+   ```
+
+При запуске сервисы сами применяют миграции своих схем БД, а задача `keycloak-config` доводит
+настройки realm Keycloak (пользователи, пароли и роли сохраняются). Её результат:
+
+```bash
+docker compose logs keycloak-config
+```
+
+Восстановление из копии (только если что-то пошло не так):
+
+```bash
+docker compose cp ./cds-backup.dump postgres:/tmp/cds-backup.dump
+```
+
+```bash
+docker compose exec -T postgres pg_restore -U postgres -d cds --clean --if-exists /tmp/cds-backup.dump
+```
+
+### Переход на 0.2.0 (своя страница входа)
+
+* Страницы входа Keycloak больше не используются: вход — на странице CDS, по логину и паролю,
+  которые у пользователей уже есть. `keycloak-config` включает для этого клиенту `cds-web` вход по паролю.
+* Если `keycloak-config` завершился с ошибкой (пароль `KC_BOOTSTRAP_ADMIN_PASSWORD` из `.env` менялся
+  в консоли Keycloak), вход покажет «Вход не настроен в Keycloak». Тогда укажите в `.env` действующий
+  пароль администратора master-realm и повторите `docker compose up -d --no-build`.
+* Пар-кривая теперь линейная между тенорами; у ранее сохранённых кривых она пересчитывается при показе,
+  сами сохранённые данные не меняются.
+* Переменная `CDS_DEV_REDIRECT_URI` больше не нужна — её можно удалить из `.env`.
 
 ## 3. Если прокси-репозиторий не отдаёт образ
 
@@ -84,7 +134,7 @@ docker compose up -d --no-build
 На машине с образами:
 
 ```bash
-docker save -o cds-images.tar local/cds-admin:0.1.0 local/cds-curves:0.1.0 local/cds-web-shell:0.1.0 local/cds-web-mfe-admin:0.1.0 local/cds-web-mfe-curves:0.1.0
+docker save -o cds-images.tar local/cds-admin:0.2.0 local/cds-curves:0.2.0 local/cds-web-shell:0.2.0 local/cds-web-mfe-admin:0.2.0 local/cds-web-mfe-curves:0.2.0
 ```
 
 В контуре (в `.env` оставьте `CDS_IMAGE_PREFIX=local`):

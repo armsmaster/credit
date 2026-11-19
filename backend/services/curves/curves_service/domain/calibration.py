@@ -102,7 +102,7 @@ class CurveNode:
     df: float
     zero: float  # continuous zero rate, percent
     forward: float | None  # continuous forward on the segment ending at this node, percent
-    par: float | None  # par rate of a swap maturing at this node, percent
+    par: float | None  # par curve: adjusted mids linearly interpolated between tenors, percent
 
 
 @dataclass
@@ -329,7 +329,8 @@ def calibrate(
     # ---- result ---------------------------------------------------------
     log_df = np.concatenate([[0.0], -np.cumsum(x / 100.0 * np.diff(grid_t))])
     dfs = np.exp(log_df)
-    par = _par_rates(as_of, grid_dates, monthly, dfs, conventions)
+    quote_t = np.array([dc.year_fraction(as_of, m) for m in maturities])
+    par = par_curve(grid_t, quote_t, s_fit)
     nodes = [
         CurveNode(
             months=monthly.get(d),
@@ -436,21 +437,14 @@ def _solve_adjustments(
     return np.clip(res.x[:n], -d_max, d_max)
 
 
-def _par_rates(
-    as_of: date, grid_dates: list[date], monthly: dict[date, int], dfs: np.ndarray, conv: SwapConventions
-) -> list[float | None]:
-    """Par rate of a swap maturing at every node (fixed-leg payment dates are monthly nodes)."""
-    dc = conv.day_count
-    pos = {d: j for j, d in enumerate(grid_dates)}
-    out: list[float | None] = [None]
-    for j in range(1, len(grid_dates)):
-        d = grid_dates[j]
-        k = monthly.get(d)
-        if k is None or k <= conv.single_payment_max_months:
-            out.append(float((1.0 / dfs[j] - 1.0) / dc.year_fraction(as_of, d) * 100.0))
-            continue
-        pays = conv.payment_dates_for_months(as_of, k)
-        prev = [as_of] + pays[:-1]
-        ann = sum(dc.year_fraction(a, b) * dfs[pos[b]] for a, b in zip(prev, pays))
-        out.append(float((1.0 - dfs[j]) / ann * 100.0))
-    return out
+def par_curve(grid_t: np.ndarray, quote_t: np.ndarray, model_par: np.ndarray) -> list[float | None]:
+    """Par curve on the grid: LINEAR interpolation (in time) of the adjusted mids between quoted
+    tenors, flat outside the quoted range.
+
+    Par rates are quotes of standard instruments, not a term structure: deriving them for
+    non-standard maturities from discount factors gives artefacts (e.g. a saw-tooth between
+    12M and 24M where the fixed-leg schedule switches from one payment to annual with a stub).
+    """
+    order = np.argsort(quote_t)
+    values = np.interp(grid_t, quote_t[order], model_par[order])
+    return [None] + [float(v) for v in values[1:]]

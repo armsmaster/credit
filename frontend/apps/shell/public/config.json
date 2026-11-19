@@ -1,5 +1,4 @@
 {
-  "keycloak": { "url": "/auth", "realm": "cds", "clientId": "cds-web" },
   "remotes": [
     { "name": "curves", "entry": "/mfe/curves/assets/remoteEntry.js" },
     { "name": "admin", "entry": "/mfe/admin/assets/remoteEntry.js" }

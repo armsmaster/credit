@@ -37,18 +37,12 @@
   "clients": [
     {
       "clientId": "cds-web",
-      "name": "CDS web UI",
+      "name": "CDS web UI (own login page via the admin service)",
       "enabled": true,
       "publicClient": true,
-      "standardFlowEnabled": true,
+      "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": false,
-      "redirectUris": ["${CDS_PUBLIC_URL}/*", "${CDS_DEV_REDIRECT_URI}"],
-      "webOrigins": ["+"],
-      "attributes": {
-        "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "+"
-      },
+      "directAccessGrantsEnabled": true,
       "protocolMappers": [
         {
           "name": "audience-cds-api",
