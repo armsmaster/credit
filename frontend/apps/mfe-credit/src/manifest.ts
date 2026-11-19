@@ -1,0 +1,24 @@
+import { Role, type MfeManifest } from '@cds/platform'
+
+const manifest: MfeManifest = {
+  name: 'credit',
+  title: 'Кредитный риск',
+  basePath: '/credit',
+  routes: [
+    { path: '', component: () => import('./pages/CreditCurvesListPage.vue'), meta: { roles: [Role.Viewer] } },
+    { path: 'issuers', component: () => import('./pages/IssuersPage.vue'), meta: { roles: [Role.Viewer] } },
+    { path: 'bonds', component: () => import('./pages/BondsPage.vue'), meta: { roles: [Role.Viewer] } },
+    { path: 'settings', component: () => import('./pages/SettingsPage.vue'), meta: { roles: [Role.Viewer] } },
+    { path: 'new', component: () => import('./pages/CurveDefinitionPage.vue'), meta: { roles: [Role.Operator] } },
+    { path: ':code/settings', component: () => import('./pages/CurveDefinitionPage.vue'), meta: { roles: [Role.Operator] } },
+    { path: ':code', component: () => import('./pages/CreditCurveWorkspacePage.vue'), meta: { roles: [Role.Viewer] } },
+  ],
+  menu: [
+    { title: 'Кредитные кривые', path: '', icon: 'DataLine', roles: [Role.Viewer] },
+    { title: 'Эмитенты', path: 'issuers', icon: 'OfficeBuilding', roles: [Role.Viewer] },
+    { title: 'Облигации', path: 'bonds', icon: 'Tickets', roles: [Role.Viewer] },
+    { title: 'Настройки кредитных кривых', path: 'settings', icon: 'Setting', roles: [Role.Viewer] },
+  ],
+}
+
+export default manifest

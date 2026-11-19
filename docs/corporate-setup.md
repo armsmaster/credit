@@ -61,7 +61,7 @@ NPM_REGISTRY=https://nexus.corp.local/repository/npm-proxy/
 ```env
 HTTP_PROXY=http://proxy.corp.local:3128
 HTTPS_PROXY=http://proxy.corp.local:3128
-NO_PROXY=localhost,127.0.0.1,postgres,keycloak,elasticsearch,admin,curves,curves-worker,scheduler,shell,mfe-admin,mfe-curves,gateway,fluent-bit,.corp.local
+NO_PROXY=localhost,127.0.0.1,postgres,keycloak,elasticsearch,admin,curves,curves-worker,credit,credit-worker,scheduler,shell,mfe-admin,mfe-curves,mfe-credit,gateway,fluent-bit,.corp.local
 ```
 
 * при сборке переменные передаются как стандартные build-args Docker (в слоях образа не сохраняются);
@@ -90,6 +90,23 @@ ERROR: No matching distribution found for fastapi==0.115.6
 
 pip обращается к зеркалу через недоступный из контейнера прокси. Добавьте домен зеркала
 в `NO_PROXY` (или очистите `HTTP_PROXY`/`HTTPS_PROXY`) и повторите `docker compose up -d --build`.
+
+### Доступ к Мосбирже (ISS) для кредитных кривых
+
+Сервисы `credit` и `credit-worker` ходят в интернет к `https://iss.moex.com` — через `HTTPS_PROXY`
+(в `NO_PROXY` домена `iss.moex.com` быть не должно). Межсервисные вызовы `credit → curves` идут
+напрямую независимо от `NO_PROXY`. Проверка из контейнера:
+
+```bash
+docker compose exec credit python -c "import httpx; print(httpx.get('https://iss.moex.com/iss/index.json', timeout=20).status_code)"
+```
+
+* прокси подменяет TLS-сертификат корпоративным CA (ошибка `CERTIFICATE_VERIFY_FAILED`): смонтируйте файл CA
+  в контейнеры `credit` и `credit-worker` (например, через `docker-compose.override.yml`) и укажите путь
+  в `ISS_CA_BUNDLE`, либо переключитесь на открытый адрес `ISS_BASE_URL=http://iss.moex.com/iss`;
+* ISS сбрасывает соединения слишком частых клиентов: частота запросов ограничена `ISS_REQUESTS_PER_SECOND` (4);
+* бесплатные рыночные данные ISS приходят с задержкой 15 минут (`ISS_DELAY_MINUTES`; 0 — при подписке
+  на данные в реальном времени).
 
 ## 5. Внутренние сертификаты
 

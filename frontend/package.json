@@ -8,7 +8,7 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build -w apps/shell -w apps/mfe-admin -w apps/mfe-curves",
+    "build": "npm run build -w apps/shell -w apps/mfe-admin -w apps/mfe-curves -w apps/mfe-credit",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "dependencies": {

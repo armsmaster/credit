@@ -1,4 +1,4 @@
-# One Dockerfile for the shell and every microfrontend:  --build-arg APP=shell|mfe-admin|mfe-curves
+# One Dockerfile for the shell and every microfrontend:  --build-arg APP=shell|mfe-admin|mfe-curves|mfe-credit
 # Each app is still an independently built and deployed image (own container behind the gateway).
 ARG DOCKERHUB_MIRROR=docker.io
 
@@ -19,7 +19,8 @@ COPY packages/platform/package.json packages/platform/
 COPY apps/shell/package.json apps/shell/
 COPY apps/mfe-admin/package.json apps/mfe-admin/
 COPY apps/mfe-curves/package.json apps/mfe-curves/
-# The steps above do not depend on APP, so BuildKit runs this install ONCE for all three images.
+COPY apps/mfe-credit/package.json apps/mfe-credit/
+# The steps above do not depend on APP, so BuildKit runs this install ONCE for all images.
 # On failure print npm's debug log: the console message ("Exit handler never called!") hides the cause.
 RUN npm ci || { echo "==== npm debug log ===="; tail -n 80 /root/.npm/_logs/*-debug-0.log; exit 1; }
 COPY . .

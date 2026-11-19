@@ -1,6 +1,7 @@
 {
   "remotes": [
     { "name": "curves", "entry": "/mfe/curves/assets/remoteEntry.js" },
+    { "name": "credit", "entry": "/mfe/credit/assets/remoteEntry.js" },
     { "name": "admin", "entry": "/mfe/admin/assets/remoteEntry.js" }
   ]
 }

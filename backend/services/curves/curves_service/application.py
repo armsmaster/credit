@@ -465,6 +465,22 @@ class CurvesApp:
             )
         return out
 
+    def effective(self, code: str, as_of: date) -> tuple[CurveDefinition, CurveState | CurveHistory]:
+        """Curve in force on a date: the latest state or history version with as_of_date <= date."""
+        defn = self.get_definition(code)
+        hist = self.s.scalars(
+            select(CurveHistory)
+            .where(CurveHistory.curve_id == defn.id, CurveHistory.as_of_date <= as_of)
+            .order_by(CurveHistory.as_of_date.desc(), CurveHistory.version.desc())
+            .limit(1)
+        ).first()
+        state = self.s.get(CurveState, defn.id)
+        if state is not None and state.as_of_date <= as_of and (hist is None or state.as_of_date >= hist.as_of_date):
+            return defn, state
+        if hist is None:
+            raise NotFound(f"Нет кривой {code} на {as_of} или раньше")
+        return defn, hist
+
     # ------------------------------------------------------------------ nightly archive
     def archive_states(self, up_to: date, actor: Principal, curve_code: str | None = None) -> dict[str, Any]:
         stmt = select(CurveDefinition, CurveState).join(CurveState, CurveState.curve_id == CurveDefinition.id)

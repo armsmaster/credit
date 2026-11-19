@@ -55,6 +55,23 @@ services:
       - ./backend/libs/cds-common/cds_common:/opt/cds-common/cds_common
     command: ["watchfiles", "--filter", "python", "python -m curves_service.worker", "/app", "/opt/cds-common"]
 
+  credit:
+    environment: *dev-python
+    volumes:
+      - ./backend/services/credit:/app
+      - ./backend/libs/cds-common/cds_common:/opt/cds-common/cds_common
+    command:
+      - sh
+      - -c
+      - alembic upgrade head && exec uvicorn credit_service.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app --reload-dir /opt/cds-common
+
+  credit-worker:
+    environment: *dev-python
+    volumes:
+      - ./backend/services/credit:/app
+      - ./backend/libs/cds-common/cds_common:/opt/cds-common/cds_common
+    command: ["watchfiles", "--filter", "python", "python -m credit_service.worker", "/app", "/opt/cds-common"]
+
   frontend-dev:
     image: ${DOCKERHUB_MIRROR:-docker.io}/library/node:22.12.0-alpine
     working_dir: /src
@@ -72,7 +89,7 @@ services:
       - -c
       - >-
         npm ci --no-audit --no-fund &&
-        (npm run watch -w apps/shell & npm run watch -w apps/mfe-admin & npm run watch -w apps/mfe-curves & wait)
+        (npm run watch -w apps/shell & npm run watch -w apps/mfe-admin & npm run watch -w apps/mfe-curves & npm run watch -w apps/mfe-credit & wait)
     restart: unless-stopped
 
   shell:
@@ -86,6 +103,10 @@ services:
   mfe-curves:
     volumes:
       - ./frontend/apps/mfe-curves/dist:/usr/share/nginx/html:ro
+    depends_on: [frontend-dev]
+  mfe-credit:
+    volumes:
+      - ./frontend/apps/mfe-credit/dist:/usr/share/nginx/html:ro
     depends_on: [frontend-dev]
 
 volumes:

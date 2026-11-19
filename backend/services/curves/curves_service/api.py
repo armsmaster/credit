@@ -226,6 +226,14 @@ def save_history(
     return _snapshot_out(code, app.save_history(code, as_of, req, req.comment, user))
 
 
+@router.get("/curves/{code}/effective", response_model=SnapshotOut, tags=["history"])
+def effective(code: str, date: date, app: CurvesApp = Depends(get_app), _: Principal = Depends(require_viewer)):
+    """Curve in force on ``date``: the current state or the latest history version on or before it
+    (used by other services, e.g. credit curves take their discount curve from here)."""
+    defn, row = app.effective(code, date)
+    return _snapshot_out(defn.code, row)
+
+
 @router.get("/curves/{code}/compare", response_model=list[CompareCurveOut], tags=["history"])
 def compare(code: str, as_of: date, app: CurvesApp = Depends(get_app), _: Principal = Depends(require_viewer)):
     """The same curve one day / week / month before ``as_of`` (latest version on or before the date)."""

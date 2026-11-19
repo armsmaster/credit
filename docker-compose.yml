@@ -78,10 +78,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-cds}
       POSTGRES_SUPERUSER: ${POSTGRES_SUPERUSER:-postgres}
       POSTGRES_SUPERUSER_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
-      BUSINESS_SERVICES: curves
+      BUSINESS_SERVICES: curves credit
       DB_PASSWORD_KEYCLOAK: ${DB_PASSWORD_KEYCLOAK:?}
       DB_PASSWORD_ADMIN: ${DB_PASSWORD_ADMIN:?}
       DB_PASSWORD_CURVES: ${DB_PASSWORD_CURVES:?}
+      DB_PASSWORD_CREDIT: ${DB_PASSWORD_CREDIT:?add it with python scripts/gen-env.py --update}
     volumes:
       - ./infra/postgres/db-init.sh:/init/db-init.sh:ro
     depends_on:
@@ -221,6 +222,42 @@ services:
     logging: *logging
     restart: unless-stopped
 
+  # Credit curves: issuers and bonds from the Moscow Exchange (ISS), bootstrapping of credit curves.
+  # Needs outbound HTTPS to iss.moex.com (through HTTP(S)_PROXY in the corporate contour).
+  credit:
+    build:
+      context: ./backend
+      dockerfile: services/credit/Dockerfile
+      args: *python-build-args
+    image: ${CDS_IMAGE_PREFIX:-local}/cds-credit:${CDS_VERSION:-latest}
+    environment: &credit-env
+      <<: *backend-env
+      SERVICE_NAME: credit
+      API_PREFIX: /api/credit
+      DATABASE_URL: postgresql+psycopg://cds_credit:${DB_PASSWORD_CREDIT}@postgres:5432/${POSTGRES_DB:-cds}
+      CURVES_API_URL: http://curves:8000/api/curves
+      ISS_BASE_URL: ${ISS_BASE_URL:-https://iss.moex.com/iss}
+      ISS_CA_BUNDLE: ${ISS_CA_BUNDLE:-}
+      ISS_REQUESTS_PER_SECOND: ${ISS_REQUESTS_PER_SECOND:-4}
+      ISS_DELAY_MINUTES: ${ISS_DELAY_MINUTES:-15}
+    depends_on:
+      admin: # owns audit/tasks schemas
+        condition: service_healthy
+    logging: *logging
+    restart: unless-stopped
+
+  credit-worker:
+    image: ${CDS_IMAGE_PREFIX:-local}/cds-credit:${CDS_VERSION:-latest}
+    command: ["python", "-m", "credit_service.worker"]
+    environment: *credit-env
+    healthcheck:
+      disable: true
+    depends_on:
+      credit:
+        condition: service_healthy
+    logging: *logging
+    restart: unless-stopped
+
   # ------------------------------------------------------------------ frontend (shell + microfrontends)
   shell:
     build:
@@ -249,6 +286,16 @@ services:
         <<: *node-build-args
         APP: mfe-curves
     image: ${CDS_IMAGE_PREFIX:-local}/cds-web-mfe-curves:${CDS_VERSION:-latest}
+    logging: *logging
+    restart: unless-stopped
+
+  mfe-credit:
+    build:
+      context: ./frontend
+      args:
+        <<: *node-build-args
+        APP: mfe-credit
+    image: ${CDS_IMAGE_PREFIX:-local}/cds-web-mfe-credit:${CDS_VERSION:-latest}
     logging: *logging
     restart: unless-stopped
 
