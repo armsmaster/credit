@@ -262,8 +262,10 @@ class CreditApp:
             b["status"] = "used" if prices else "no_prices"
             fit_inputs.append(BondFitInput(b["secid"], label, pricer, prices, b["weight"],
                                            info={"kind": b["kind"], "short": b["short"], "to_offer": b["to_offer"]}))
-            b["cashflows"] = [{"date": f.date.isoformat(), "kind": f.kind, "amount": round(f.amount, 6), "rate_pct": f.rate_pct,
-                               "projected": f.projected} for f in projected.flows]
+            b["cashflows"] = [f.to_dict() for f in projected.flows]
+            b["lag_days"] = p.lag_days
+            b["notional_index"] = p.notional_index.value if p.notional_index else None
+            b["redemption_price_pct"] = p.offer_price if b["to_offer"] else 100.0
 
         result = None
         if fit_inputs and any(f.observations for f in fit_inputs):
@@ -281,7 +283,10 @@ class CreditApp:
 
     @staticmethod
     def _stored_bonds(bonds_in: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        keep = ("secid", "shortname", "weight", "enabled", "manual_price", "excluded_obs", "status", "kind", "maturity", "years", "market")
+        # everything the Excel calculation detail needs, so a saved curve can be re-checked at any time
+        keep = ("secid", "shortname", "weight", "enabled", "manual_price", "excluded_obs", "status", "kind", "maturity", "years",
+                "market", "coupon_index", "spread_pct", "lag_days", "notional_index", "to_offer", "redemption_price_pct", "short",
+                "cashflows")
         return [{k: b.get(k) for k in keep} for b in bonds_in]
 
     @staticmethod

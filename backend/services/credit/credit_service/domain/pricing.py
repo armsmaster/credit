@@ -60,6 +60,16 @@ class HazardGrid:
         return min(max(k, 1), self.size)
 
 
+def default_grid_days(curve_date: date, grid: HazardGrid, settle_days: float, maturity_days: float, flow_days: np.ndarray) -> np.ndarray:
+    """Grid of the default leg (days from the curve date): settlement, month knots and cash-flow
+    dates up to the effective maturity."""
+    knot_days = np.array([(d - curve_date).days for d in grid.knot_dates], dtype=float)
+    pts = np.concatenate([[settle_days, maturity_days],
+                          knot_days[(knot_days > settle_days) & (knot_days < maturity_days)],
+                          flow_days[flow_days < maturity_days]])
+    return np.unique(pts[(pts >= settle_days) & (pts <= maturity_days)])
+
+
 class BondPricer:
     def __init__(
         self,
@@ -85,9 +95,7 @@ class BondPricer:
         self.cf_c = self.cf_amount * self.cf_df
 
         # default grid: settlement, month knots and cash-flow dates up to maturity
-        knot_days = np.array([(d - D).days for d in grid.knot_dates], dtype=float)
-        pts = np.concatenate([[s_days, m_days], knot_days[(knot_days > s_days) & (knot_days < m_days)], cf_days[cf_days < m_days]])
-        u = np.unique(pts[(pts >= s_days) & (pts <= m_days)])
+        u = default_grid_days(D, grid, s_days, m_days, cf_days)
         self.dg_t = u / DAYS_PER_YEAR
         mid = 0.5 * (u[1:] + u[:-1])
         self.dg_w = recovery * bond.notional_at(u[:-1]) * discount.df_days(D, mid)

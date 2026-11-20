@@ -4,12 +4,15 @@ from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from cds_common.auth import Principal, require_operator, require_viewer
 from cds_common.db import get_session
 from cds_common.tasks import Trigger, enqueue
+from cds_common.xlsx import XLSX_MEDIA_TYPE
 
+from . import export_xlsx
 from .application import CurvesApp, effective_params, with_linear_par
 from .domain.calibration import CalibrationParams
 from .domain.curve import Compounding
@@ -240,3 +243,47 @@ def compare(code: str, as_of: date, app: CurvesApp = Depends(get_app), _: Princi
     return app.compare(code, as_of)
 
 
+
+
+# ---------------------------------------------------------------- Excel: calculation detail
+def _xlsx(content: bytes, filename: str) -> Response:
+    return Response(content, media_type=XLSX_MEDIA_TYPE, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+def _export_snapshot(defn: CurveDefinition, row: CurveState | CurveHistory) -> dict[str, Any]:
+    is_state = isinstance(row, CurveState)
+    return {
+        "curve_code": defn.code,
+        "curve_name": defn.name,
+        "kind": "state" if is_state else "history",
+        "version": None if is_state else row.version,
+        "author": row.saved_by if is_state else row.created_by,
+        "saved_at": row.saved_at if is_state else row.created_at,
+        "as_of_date": row.as_of_date,
+        "conventions": row.conventions,
+        "result": with_linear_par(row.result),
+    }
+
+
+@router.get("/curves/{code}/state/export.xlsx", tags=["export"])
+def export_state(code: str, app: CurvesApp = Depends(get_app), _: Principal = Depends(require_viewer)):
+    """Excel with the calculation detail of the current curve: nodes, interpolation, swap schedules, par rates."""
+    defn, state = app.get_state(code)
+    return _xlsx(export_xlsx.build(_export_snapshot(defn, state)), f"{defn.code}_{state.as_of_date}.xlsx")
+
+
+@router.get("/curves/{code}/history/{as_of}/export.xlsx", tags=["export"])
+def export_history(code: str, as_of: date, version: int | None = None, app: CurvesApp = Depends(get_app),
+                   _: Principal = Depends(require_viewer)):
+    defn, row = app.get_history(code, as_of, version)
+    return _xlsx(export_xlsx.build(_export_snapshot(defn, row)), f"{defn.code}_{as_of}_v{row.version}.xlsx")
+
+
+@router.post("/calibrate/export.xlsx", tags=["export"])
+def export_calculation(req: CalibrateRequest, app: CurvesApp = Depends(get_app), _: Principal = Depends(require_operator)):
+    """Excel for a calculation in the editor (not saved yet): same inputs as POST /calibrate."""
+    defn = app.get_definition(req.curve_code)
+    result, _quotes, _params = app.calibrate(defn, req.as_of_date, req)
+    snap = {"curve_code": defn.code, "curve_name": defn.name, "kind": "calculation", "as_of_date": req.as_of_date,
+            "conventions": result["conventions"], "result": with_linear_par(result)}
+    return _xlsx(export_xlsx.build(snap), f"{defn.code}_{req.as_of_date}_calc.xlsx")

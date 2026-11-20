@@ -161,6 +161,11 @@ Realm импортируется из `infra/keycloak/realm-cds.json` тольк
 Сервису нужен выход к `iss.moex.com` (в контуре — через `HTTPS_PROXY`, см.
 [docs/corporate-setup.md](docs/corporate-setup.md#доступ-к-мосбирже-iss-для-кредитных-кривых)).
 
+Для проверки логики расчётов у каждой кривой есть кнопка **Excel**: файл с формулами показывает, как построенная
+кривая даёт модельные ставки свопов (графики выплат, интерполяция DF) или модельные цены облигаций (прогноз
+купонов и номиналов, дожитие, recovery, дисконтирование) — см. последние разделы
+[docs/curves-math.md](docs/curves-math.md) и [docs/credit-math.md](docs/credit-math.md).
+
 API документирован в Swagger: `/api/curves/docs`, `/api/credit/docs`, `/api/admin/docs`.
 
 ## Разработка

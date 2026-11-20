@@ -1,4 +1,4 @@
-import { getPlatform } from '@cds/platform'
+import { downloadFile, getPlatform } from '@cds/platform'
 
 import type {
   CalibrationResult,
@@ -55,4 +55,12 @@ export const api = {
       http().post<Snapshot>(`${BASE}/curves/${encodeURIComponent(code)}/history/${date}`, { comment, ...p }),
   },
   compare: (code: string, as_of: string) => http().get<CompareCurve[]>(`${BASE}/curves/${encodeURIComponent(code)}/compare`, { as_of }),
+  // Excel with the calculation detail (nodes, interpolation, swap schedules, par rates)
+  excel: {
+    state: (code: string) => downloadFile(`${BASE}/curves/${encodeURIComponent(code)}/state/export.xlsx`),
+    history: (code: string, date: string, version?: number | null) =>
+      downloadFile(`${BASE}/curves/${encodeURIComponent(code)}/history/${date}/export.xlsx${version ? `?version=${version}` : ''}`),
+    calculation: (curve_code: string, as_of_date: string, p: QuotesPayload) =>
+      downloadFile(`${BASE}/calibrate/export.xlsx`, { body: { curve_code, as_of_date, ...p } }),
+  },
 }

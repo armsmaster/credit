@@ -41,6 +41,9 @@ class RatesClient:
         curve_date = date.fromisoformat(snap["as_of_date"])
         nodes = snap["result"]["nodes"]
         curve = RateCurve.from_snapshot(code, curve_date, snap.get("conventions", {}).get("day_count", "ACT/365F"), nodes)
-        ref = {"code": code, "as_of_date": snap["as_of_date"], "kind": snap["kind"], "version": snap.get("version")}
+        # nodes are kept with the credit curve: its Excel calculation detail stays reproducible
+        ref = {"code": code, "as_of_date": snap["as_of_date"], "kind": snap["kind"], "version": snap.get("version"),
+               "day_count": snap.get("conventions", {}).get("day_count", "ACT/365F"),
+               "nodes": [{"date": n["date"], "df": n["df"]} for n in nodes]}
         self._cache[key] = (curve, ref)
         return curve, ref

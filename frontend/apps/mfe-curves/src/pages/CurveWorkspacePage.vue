@@ -33,6 +33,9 @@
           <el-icon><EditPen /></el-icon>&nbsp;{{ state ? 'Построить / обновить' : 'Построить кривую' }}
         </el-button>
         <el-button v-if="isOperator && state" @click="archiveNow">Перенести в историю</el-button>
+        <el-tooltip v-if="state" :content="EXCEL_HINT">
+          <el-button :loading="exporting" @click="exportExcel"><el-icon><Download /></el-icon>&nbsp;Excel</el-button>
+        </el-tooltip>
       </template>
       <template v-else>
         <template v-if="historySnap">
@@ -53,6 +56,9 @@
         <el-button v-if="isOperator && historySnap" type="primary" @click="startEdit('history', historySnap.as_of_date)">
           <el-icon><EditPen /></el-icon>&nbsp;Редактировать (новая версия)
         </el-button>
+        <el-tooltip v-if="historySnap" :content="EXCEL_HINT">
+          <el-button :loading="exporting" @click="exportExcel"><el-icon><Download /></el-icon>&nbsp;Excel</el-button>
+        </el-tooltip>
       </template>
     </div>
 
@@ -115,6 +121,9 @@
           <ParamsForm v-model="params" :defaults="defn.effective_params" />
           <div class="calc-row">
             <el-button type="primary" plain :loading="calculating" :disabled="!quotesValid" @click="recalc">Рассчитать</el-button>
+            <el-tooltip :content="EXCEL_HINT">
+              <el-button :loading="exporting" :disabled="!quotesValid" @click="exportExcel"><el-icon><Download /></el-icon>&nbsp;Excel</el-button>
+            </el-tooltip>
             <el-switch v-model="autoCalc" active-text="авто" />
           </div>
           <el-alert v-if="calcError" type="error" :title="calcError" :closable="false" show-icon class="mb" />
@@ -208,6 +217,7 @@ const COMPARE_LABELS: { key: CompareKey; title: string }[] = [
 ]
 const SOURCE_LABELS: Record<string, string> = { snapshot: 'ночной перенос', auto_archive: 'автоперенос', manual_edit: 'ручное изменение' }
 const PREFS_KEY = 'curves.chart'
+const EXCEL_HINT = 'Excel с детализацией расчёта: узлы кривой, интерполяция DF, графики выплат свопов и пар-ставки — формулами'
 
 const route = useRoute()
 const router = useRouter()
@@ -385,6 +395,20 @@ async function save() {
     ElMessage.error(e.message)
   } finally {
     saving.value = false
+  }
+}
+
+const exporting = ref(false)
+async function exportExcel() {
+  exporting.value = true
+  try {
+    if (editing.value) await api.excel.calculation(code.value, editDate.value, { input_mode: inputMode.value, quotes: quotes.value, params: params.value })
+    else if (tab.value === 'current') await api.excel.state(code.value)
+    else if (historySnap.value) await api.excel.history(code.value, historySnap.value.as_of_date, historySnap.value.version)
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  } finally {
+    exporting.value = false
   }
 }
 

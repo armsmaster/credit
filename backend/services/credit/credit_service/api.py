@@ -11,7 +11,9 @@ from cds_common.auth import Principal, require_operator, require_viewer
 from cds_common.db import get_session
 from cds_common.errors import AppError
 from cds_common.tasks import Trigger, enqueue
+from cds_common.xlsx import XLSX_MEDIA_TYPE
 
+from . import export_xlsx
 from .application import CreditApp, effective_params
 from .catalog import CatalogApp
 from .domain.bonds import KIND_TITLES, RateIndex
@@ -20,6 +22,8 @@ from .models import CurveDefinition, CurveHistory, CurveState
 from .rates_client import RatesClient
 from .schemas import (
     BondDetailOut,
+    CalcBondIn,
+    ParamsIn,
     BondManual,
     BondOut,
     CalculationOut,
@@ -269,3 +273,61 @@ def save_history(code: str, as_of: date, req: SaveHistoryRequest, app: CreditApp
 @router.get("/curves/{code}/compare", response_model=list[CompareCurveOut], tags=["history"])
 def compare(code: str, as_of: date, app: CreditApp = Depends(get_app), _: Principal = Depends(require_viewer)):
     return app.compare(code, as_of)
+
+
+# ---------------------------------------------------------------- Excel: calculation detail
+def _xlsx(content: bytes, filename: str) -> Response:
+    return Response(content, media_type=XLSX_MEDIA_TYPE, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+def _export_snapshot(app: CreditApp, defn: CurveDefinition, row: CurveState | CurveHistory, rates: RatesClient) -> dict[str, Any]:
+    is_state = isinstance(row, CurveState)
+    snap = {
+        "curve_code": defn.code, "curve_name": defn.name, "issuer_title": app.issuer_titles().get(defn.issuer_id, ""),
+        "kind": "state" if is_state else "history", "version": None if is_state else row.version,
+        "author": row.saved_by if is_state else row.created_by, "saved_at": row.saved_at if is_state else row.created_at,
+        "as_of_date": row.as_of_date, "bonds": row.bonds, "inputs": row.inputs, "result": row.result,
+    }
+    if export_xlsx.is_complete(snap):
+        return snap
+    # Saved before the calculation detail was stored: recompute with the saved composition and parameters
+    payload = CalcPayload(
+        bonds=[CalcBondIn(secid=b["secid"], weight=b.get("weight") or 1.0, enabled=b.get("enabled", True),
+                          manual_price=b.get("manual_price"), excluded_obs=b.get("excluded_obs") or []) for b in row.bonds],
+        params=ParamsIn(**{k: v for k, v in (row.params or {}).items() if k in ParamsIn.model_fields}),
+    )
+    calc = app.calculate(defn, row.as_of_date, payload, rates)
+    if calc["result"] is None:
+        raise AppError("Кривую не удалось пересчитать для детализации: " + "; ".join(calc["inputs"]["warnings"][-3:]),
+                       code="export_failed")
+    snap.update(kind="recalculated", bonds=calc["bonds"], inputs=calc["inputs"], result=calc["result"])
+    return snap
+
+
+@router.get("/curves/{code}/state/export.xlsx", tags=["export"])
+def export_state(code: str, app: CreditApp = Depends(get_app), rates: RatesClient = Depends(get_rates),
+                 _: Principal = Depends(require_viewer)):
+    """Excel with the calculation detail of the current credit curve: survival, cash flows, recovery, model prices."""
+    defn, state = app.get_state(code)
+    return _xlsx(export_xlsx.build(_export_snapshot(app, defn, state, rates)), f"{defn.code}_{state.as_of_date}.xlsx")
+
+
+@router.get("/curves/{code}/history/{as_of}/export.xlsx", tags=["export"])
+def export_history(code: str, as_of: date, version: int | None = None, app: CreditApp = Depends(get_app),
+                   rates: RatesClient = Depends(get_rates), _: Principal = Depends(require_viewer)):
+    defn, row = app.get_history(code, as_of, version)
+    return _xlsx(export_xlsx.build(_export_snapshot(app, defn, row, rates)), f"{defn.code}_{as_of}_v{row.version}.xlsx")
+
+
+@router.post("/calibrate/export.xlsx", tags=["export"])
+def export_calculation(req: CalibrateRequest, app: CreditApp = Depends(get_app), rates: RatesClient = Depends(get_rates),
+                       _: Principal = Depends(require_operator)):
+    """Excel for a calculation in the online editor (not saved yet): same inputs as POST /calibrate."""
+    defn = app.get_definition(req.curve_code)
+    calc = app.calculate(defn, req.as_of_date, req, rates)
+    if calc["result"] is None:
+        raise AppError("Кривая не построена: " + "; ".join(calc["inputs"]["warnings"][-3:]), code="calibration_failed")
+    snap = {"curve_code": defn.code, "curve_name": defn.name, "issuer_title": app.issuer_titles().get(defn.issuer_id, ""),
+            "kind": "calculation", "as_of_date": req.as_of_date, "bonds": calc["bonds"], "inputs": calc["inputs"],
+            "result": calc["result"]}
+    return _xlsx(export_xlsx.build(snap), f"{defn.code}_{req.as_of_date}_calc.xlsx")

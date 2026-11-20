@@ -37,6 +37,22 @@ class Cashflow:
     amount: float  # RUB per bond
     rate_pct: float | None = None
     projected: bool = False  # True when the amount is a model projection (floating / linker)
+    # how the amount was obtained (shown in the Excel calculation detail)
+    source: str = ""  # iss_amount | fixed_rate | floating | linker_coupon | iss_amortization | redemption | linker_redemption
+    start: date | None = None  # coupon period start
+    days: int | None = None  # coupon period length, days
+    notional: float | None = None  # notional the coupon/redemption is paid on (indexed for linkers)
+    index_rate_pct: float | None = None  # projected index rate of the period (floating coupons)
+    spread_pct: float | None = None  # margin over the index (floating coupons)
+    price_pct: float | None = None  # redemption price, % of the outstanding notional
+
+    def to_dict(self) -> dict:
+        return {
+            "date": self.date.isoformat(), "kind": self.kind, "amount": self.amount, "rate_pct": self.rate_pct,
+            "projected": self.projected, "source": self.source, "start": self.start.isoformat() if self.start else None,
+            "days": self.days, "notional": self.notional, "index_rate_pct": self.index_rate_pct,
+            "spread_pct": self.spread_pct, "price_pct": self.price_pct,
+        }
 
 
 @dataclass
@@ -76,7 +92,8 @@ class ProjectedBond:
         return values[idx] * self.index_factor(days)
 
 
-def _coupon_rate(p: BondProfile, start: date, end: date, curve_date: date, curves: dict[RateIndex, RateCurve]) -> float:
+def _index_forward(p: BondProfile, start: date, end: date, curve_date: date, curves: dict[RateIndex, RateCurve]) -> float:
+    """Projected index rate of a coupon period, % (simple ACT/365 forward of the index curve)."""
     if p.coupon_index is None or p.spread_pct is None:
         raise CashflowError(f"{p.secid}: для плавающего купона не заданы индекс и маржа")
     curve = curves.get(p.coupon_index)
@@ -84,7 +101,11 @@ def _coupon_rate(p: BondProfile, start: date, end: date, curve_date: date, curve
         raise CashflowError(f"{p.secid}: нет кривой для индекса {p.coupon_index.value}")
     a = max((start - curve_date).days - p.lag_days, 0)
     b = max((end - curve_date).days - p.lag_days, a + 1)
-    return curve.simple_forward(curve_date, a, b) * 100.0 + p.spread_pct
+    return curve.simple_forward(curve_date, a, b) * 100.0
+
+
+def _coupon_rate(p: BondProfile, start: date, end: date, curve_date: date, curves: dict[RateIndex, RateCurve]) -> float:
+    return _index_forward(p, start, end, curve_date, curves) + (p.spread_pct or 0.0)
 
 
 def project(
@@ -130,7 +151,7 @@ def project(
             if amount <= 0:
                 continue
             outstanding -= amount
-            amort_flows.append(Cashflow(a.date, "amortization", amount))
+            amort_flows.append(Cashflow(a.date, "amortization", amount, source="iss_amortization"))
             out._step_dates.append(a.date)
             out._step_values.append(outstanding)
 
@@ -156,24 +177,33 @@ def project(
             rate = p.fixed_rate_pct if p.fixed_rate_pct is not None else c.rate
             if rate is None:
                 raise CashflowError(f"{p.secid}: неизвестна ставка купона линкера")
-            amount = face_settle * factor(c.end) * rate / 100.0 * days / 365.0
-            coupon_flows.append(Cashflow(c.end, "coupon", amount, rate, projected=True))
+            indexed = face_settle * factor(c.end)
+            amount = indexed * rate / 100.0 * days / 365.0
+            coupon_flows.append(Cashflow(c.end, "coupon", amount, rate, projected=True, source="linker_coupon",
+                                         start=start, days=days, notional=indexed))
         elif c.value is not None:
-            coupon_flows.append(Cashflow(c.end, "coupon", c.value, c.rate))
+            coupon_flows.append(Cashflow(c.end, "coupon", c.value, c.rate, source="iss_amount", start=start, days=days,
+                                         notional=notional))
         elif p.kind is BondKind.FLOATING:
-            rate = _coupon_rate(p, start, c.end, curve_date, curves)
-            coupon_flows.append(Cashflow(c.end, "coupon", notional * rate / 100.0 * days / 365.0, rate, projected=True))
+            index = _index_forward(p, start, c.end, curve_date, curves)
+            rate = index + (p.spread_pct or 0.0)
+            coupon_flows.append(Cashflow(c.end, "coupon", notional * rate / 100.0 * days / 365.0, rate, projected=True,
+                                         source="floating", start=start, days=days, notional=notional,
+                                         index_rate_pct=index, spread_pct=p.spread_pct))
         else:
             rate = p.fixed_rate_pct if p.fixed_rate_pct is not None else c.rate
             if rate is None:
                 raise CashflowError(f"{p.secid}: неизвестна ставка купона {c.end}")
-            coupon_flows.append(Cashflow(c.end, "coupon", notional * rate / 100.0 * days / 365.0, rate))
+            coupon_flows.append(Cashflow(c.end, "coupon", notional * rate / 100.0 * days / 365.0, rate, source="fixed_rate",
+                                         start=start, days=days, notional=notional))
 
     # ---- final redemption of what is left
-    final = outstanding * redemption_price
+    base = outstanding
     if p.kind is BondKind.LINKER:
-        final = face_settle * factor(maturity) * redemption_price
-    redemption = Cashflow(maturity, "redemption", final, projected=p.kind is BondKind.LINKER)
+        base = face_settle * factor(maturity)
+    redemption = Cashflow(maturity, "redemption", base * redemption_price, projected=p.kind is BondKind.LINKER,
+                          source="linker_redemption" if p.kind is BondKind.LINKER else "redemption",
+                          notional=base, price_pct=redemption_price * 100.0)
 
     out.flows = sorted(coupon_flows + amort_flows + [redemption], key=lambda f: (f.date, f.kind != "coupon"))
     return out
