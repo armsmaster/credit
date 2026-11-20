@@ -193,7 +193,8 @@ docker compose run --rm --no-deps -u root credit sh -c "pip install -q pytest==8
 1. `backend/services/<svc>/` по образцу `curves` (свои `alembic` миграции в схеме `<svc>`);
 2. в `docker-compose.yml` — сервис (и воркер, если есть фоновые задачи), в `db-init` —
    имя в `BUSINESS_SERVICES` и `DB_PASSWORD_<SVC>`; в `.env.example` — пароль;
-3. location `/api/<svc>/` в `infra/gateway/nginx.conf`, имя сервиса — в `NO_PROXY`;
+3. location `/api/<svc>/` в `infra/gateway/nginx.conf` (nginx читает файл при старте:
+   `docker compose restart gateway`; при обновлении версии gateway пересоздаётся сам), имя сервиса — в `NO_PROXY`;
 4. аудит: `AuditLog("<svc>").record(session, …)` в той же транзакции;
    фоновые задачи: `TaskRegistry("<svc>")` + `python -m <svc>_service.worker`.
 

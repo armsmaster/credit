@@ -301,6 +301,11 @@ services:
 
   gateway:
     image: ${DOCKERHUB_MIRROR:-docker.io}/library/nginx:1.27.3-alpine
+    # nginx reads the bind-mounted nginx.conf only at start, and compose does not notice edits of
+    # that file. The version label changes with CDS_VERSION, so `docker compose up` recreates the
+    # gateway on every upgrade and new routes (/api/<svc>, /mfe/<app>) take effect.
+    labels:
+      cds.version: ${CDS_VERSION:-latest}
     ports:
       - "${GATEWAY_PORT:-8080}:80"
     volumes:
