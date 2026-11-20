@@ -1,6 +1,6 @@
 <template>
   <el-container class="shell">
-    <el-aside width="236px" class="shell-aside">
+    <el-aside width="272px" class="shell-aside">
       <router-link to="/" class="brand">
         <img src="/favicon.svg" alt="" />
         <span>CDS Pricing</span>

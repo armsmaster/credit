@@ -28,6 +28,15 @@
         <el-slider v-model="logAlpha" :min="-1" :max="4" :step="0.05" :format-tooltip="(v: number) => fmt(10 ** v)" />
         <Reset field="smoothness" />
       </div>
+      <div class="presets">
+        <el-button
+          v-for="v in SMOOTHNESS_PRESETS"
+          :key="v"
+          size="small"
+          :type="model.smoothness === v ? 'primary' : 'default'"
+          @click="model.smoothness = v"
+        >{{ v }}</el-button>
+      </div>
     </el-form-item>
 
     <el-form-item>
@@ -70,6 +79,9 @@ import { computed, defineComponent, h, resolveComponent } from 'vue'
 import type { Params } from '../types'
 
 const model = defineModel<Params>({ required: true })
+
+// Quick picks on the logarithmic slider (0 = no smoothing penalty).
+const SMOOTHNESS_PRESETS = [0, 100, 250, 500, 1000, 1500, 2000, 3000, 5000, 7500, 10000]
 const props = defineProps<{ defaults: Params }>()
 
 const fmt = (v: number) => (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toFixed(2))
@@ -116,6 +128,17 @@ const Reset = defineComponent({
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0 12px;
+}
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 8px 0;
+}
+.presets .el-button {
+  margin: 0;
+  padding: 4px 7px;
+  min-width: 40px;
 }
 .slider-row {
   display: flex;

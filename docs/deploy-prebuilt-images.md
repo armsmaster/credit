@@ -32,11 +32,11 @@
 docker login
 ```
 
-Соберите и опубликуйте образы (`<user>` — ваш логин Docker Hub, `0.3.0` — версия):
+Соберите и опубликуйте образы (`<user>` — ваш логин Docker Hub, `0.3.1` — версия):
 
 ```powershell
 $env:CDS_IMAGE_PREFIX = "docker.io/<user>"
-$env:CDS_VERSION = "0.3.0"
+$env:CDS_VERSION = "0.3.1"
 docker compose build admin curves credit shell mfe-admin mfe-curves mfe-credit
 docker compose push admin curves credit shell mfe-admin mfe-curves mfe-credit
 ```
@@ -44,11 +44,11 @@ docker compose push admin curves credit shell mfe-admin mfe-curves mfe-credit
 То же в bash:
 
 ```bash
-CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.3.0 docker compose build admin curves credit shell mfe-admin mfe-curves mfe-credit
+CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.3.1 docker compose build admin curves credit shell mfe-admin mfe-curves mfe-credit
 ```
 
 ```bash
-CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.3.0 docker compose push admin curves credit shell mfe-admin mfe-curves mfe-credit
+CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.3.1 docker compose push admin curves credit shell mfe-admin mfe-curves mfe-credit
 ```
 
 `push` перечисляет сервисы явно: остальные сервисы используют чужие образы, их публиковать не нужно.
@@ -62,7 +62,7 @@ CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.3.0 docker compose push admin cu
 ```env
 DOCKERHUB_MIRROR=nexus.corp.local/dockerhub
 CDS_IMAGE_PREFIX=nexus.corp.local/dockerhub/<user>
-CDS_VERSION=0.3.0
+CDS_VERSION=0.3.1
 ```
 
 Скачайте образы и запустите без сборки:
@@ -121,6 +121,12 @@ docker compose cp ./cds-backup.dump postgres:/tmp/cds-backup.dump
 docker compose exec -T postgres pg_restore -U postgres -d cds --clean --if-exists /tmp/cds-backup.dump
 ```
 
+### Переход на 0.3.1 (доработки интерфейса)
+
+* Кнопки стандартных значений гладкости (0, 100, 250 … 10000) у процентных и кредитных кривых, более
+  широкое левое меню. Данные и настройки не меняются: достаточно `CDS_VERSION=0.3.1`, `docker compose pull`
+  и `docker compose up -d --no-build` (gateway пересоздастся сам).
+
 ### Переход на 0.3.0 (кредитные кривые)
 
 * Новый сервис `credit` (+ `credit-worker`) и микрофронтенд `mfe-credit`: образы `cds-credit`, `cds-web-mfe-credit`.
@@ -160,7 +166,7 @@ docker compose exec -T postgres pg_restore -U postgres -d cds --clean --if-exist
 На машине с образами:
 
 ```bash
-docker save -o cds-images.tar local/cds-admin:0.3.0 local/cds-curves:0.3.0 local/cds-credit:0.3.0 local/cds-web-shell:0.3.0 local/cds-web-mfe-admin:0.3.0 local/cds-web-mfe-curves:0.3.0 local/cds-web-mfe-credit:0.3.0
+docker save -o cds-images.tar local/cds-admin:0.3.1 local/cds-curves:0.3.1 local/cds-credit:0.3.1 local/cds-web-shell:0.3.1 local/cds-web-mfe-admin:0.3.1 local/cds-web-mfe-curves:0.3.1 local/cds-web-mfe-credit:0.3.1
 ```
 
 В контуре (в `.env` оставьте `CDS_IMAGE_PREFIX=local`):
