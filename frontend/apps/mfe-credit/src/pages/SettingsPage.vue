@@ -76,6 +76,52 @@
             </el-table>
           </div>
         </el-card>
+
+        <el-card v-if="cds" shadow="never">
+          <template #header>
+            <div class="card-head"><b>Прайсинг CDS</b><div class="spacer" />
+              <el-button v-if="isOperator" size="small" type="primary" :loading="savingCds" @click="saveCds">Сохранить</el-button>
+            </div>
+          </template>
+          <p class="muted small">Открытые вопросы к НКЦ и Сберу из спецификации заведены как настройки: ответ меняет параметр, а не код. После изменения CDS-кривые пересчитываются при следующем сохранении кривых или кнопкой «Пересчитать».</p>
+          <el-form label-position="top" :disabled="!isOperator" size="small">
+            <div class="two">
+              <el-form-item label="Rq для конверсии QS ↔ PUF, %">
+                <el-input-number v-model="rqPct" :min="0" :max="95" :step="5" controls-position="right" />
+              </el-form-item>
+              <el-form-item label="Коэффициент дней купона и ребейта">
+                <el-select v-model="cds.day_count" style="width: 100%">
+                  <el-option value="ACT/ACT.ISDA" label="ACT/ACT ISDA (СПФИ)" />
+                  <el-option value="ACT/360" label="ACT/360 (междунар.)" />
+                  <el-option value="ACT/365F" label="ACT/365F" />
+                </el-select>
+              </el-form-item>
+            </div>
+            <el-form-item label="Стандартные сроки">
+              <el-checkbox-group v-model="cds.tenors">
+                <el-checkbox v-for="t in ['6M', '1Y', '2Y', '3Y', '4Y', '5Y', '7Y', '10Y']" :key="t" :value="t">{{ t }}</el-checkbox>
+              </el-checkbox-group>
+            </el-form-item>
+            <el-form-item label="Ребейт (пример Мосбиржи 28.10.2026: 38 или 39 дней; конец — Дата начала срока, искл.)">
+              <el-select v-model="cds.rebate_mode" style="width: 100%">
+                <el-option value="spec" label="По спецификации: от смещённой CDS-даты (38 дн.)" />
+                <el-option value="unadjusted_start" label="От несмещённой CDS-даты (39 дн., слайд)" />
+                <el-option value="inclusive_end" label="С включением Даты начала срока (39 дн.)" />
+              </el-select>
+            </el-form-item>
+            <el-checkbox v-model="cds.protection_from_effective" class="wrap-check">Защита с Даты начала срока (иначе ISDA: step-in T+1 календарный день)</el-checkbox>
+            <el-checkbox v-model="cds.sber_adjust_period_ends" class="wrap-check">Сбер: концы периодов сдвигаются по «Следующий» вместе с платежами</el-checkbox>
+            <el-checkbox v-model="cds.sber_last_period_inclusive" class="wrap-check">Сбер: последний период включает Плановую дату прекращения</el-checkbox>
+            <div class="two mt">
+              <el-form-item label="Календарь СПФИ">
+                <el-select v-model="cds.spfi_calendar" style="width: 100%"><el-option v-for="c in calendars" :key="c.code" :value="c.code" :label="c.name" /></el-select>
+              </el-form-item>
+              <el-form-item label="Календарь Сбера">
+                <el-select v-model="cds.sber_calendar" style="width: 100%"><el-option v-for="c in calendars" :key="c.code" :value="c.code" :label="c.name" /></el-select>
+              </el-form-item>
+            </div>
+          </el-form>
+        </el-card>
       </div>
     </template>
   </div>
@@ -89,7 +135,7 @@ import { formatDateTime, getPlatform, Role } from '@cds/platform'
 
 import { api } from '../api'
 import { num } from '../format'
-import type { RateCurveDef, Settings } from '../types'
+import type { CalendarInfo, CdsSettings, RateCurveDef, Settings } from '../types'
 
 const isOperator = getPlatform().hasRole(Role.Operator)
 const loading = ref(false)
@@ -99,14 +145,39 @@ const rateCurves = ref<RateCurveDef[]>([])
 const demaMode = ref<'auto' | 'fixed'>('auto')
 const halfLife = ref<number>(8)
 
+const cds = ref<CdsSettings | null>(null)
+const calendars = ref<CalendarInfo[]>([])
+const savingCds = ref(false)
+const rqPct = computed({
+  get: () => (cds.value ? Math.round(cds.value.recovery_quote * 1000) / 10 : 40),
+  set: (v: number | undefined) => {
+    if (cds.value) cds.value.recovery_quote = (v ?? 40) / 100
+  },
+})
+
+async function saveCds() {
+  if (!cds.value) return
+  savingCds.value = true
+  try {
+    cds.value = await api.cds.saveSettings(cds.value)
+    ElMessage.success('Настройки CDS сохранены')
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  } finally {
+    savingCds.value = false
+  }
+}
+
 const auto = computed(() => form.value?.dema_auto ?? null)
 const autoRows = computed(() => Object.entries(auto.value?.bonds ?? {}).map(([secid, v]) => ({ secid, ...v })))
 
 async function load() {
   loading.value = true
   try {
-    const [s, curves] = await Promise.all([api.settings.get(), api.rateCurves().catch(() => [])])
+    const [s, curves, cdsMeta] = await Promise.all([api.settings.get(), api.rateCurves().catch(() => []), api.cds.meta()])
     form.value = s
+    cds.value = cdsMeta.settings
+    calendars.value = cdsMeta.calendars
     rateCurves.value = curves
     demaMode.value = s.dema.half_life_hours ? 'fixed' : 'auto'
     halfLife.value = s.dema.half_life_hours ?? s.dema_auto?.half_life_hours ?? 8
@@ -164,5 +235,31 @@ onMounted(load)
 }
 .auto {
   margin-top: 8px;
+}
+.card-head {
+  display: flex;
+  align-items: center;
+}
+.two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 12px;
+}
+.mt {
+  margin-top: 8px;
+}
+.wrap-check {
+  display: flex;
+  align-items: flex-start;
+  height: auto;
+  margin: 0 0 8px;
+  white-space: normal;
+}
+.wrap-check :deep(.el-checkbox__input) {
+  margin-top: 2px;
+}
+.wrap-check :deep(.el-checkbox__label) {
+  white-space: normal;
+  line-height: 1.4;
 }
 </style>

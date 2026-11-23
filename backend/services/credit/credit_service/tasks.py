@@ -13,6 +13,7 @@ from datetime import date, timedelta
 from cds_common.tasks import TaskContext, TaskRegistry
 
 from .application import CreditApp
+from .cds.application import CdsApp
 from .config import get_settings
 from .iss import IssClient
 from .market import MarketData
@@ -93,4 +94,36 @@ def archive_states(ctx: TaskContext) -> dict:
     raw = ctx.params.get("up_to_date")
     up_to = date.fromisoformat(raw) if raw else settings.today() - timedelta(days=1)
     with ctx.session_factory() as session:
-        return CreditApp(session, settings).archive_states(up_to, ctx.actor, ctx.params.get("curve_code"))
+        out = CreditApp(session, settings).archive_states(up_to, ctx.actor, ctx.params.get("curve_code"))
+    if not ctx.params.get("curve_code"):
+        with ctx.session_factory() as session:
+            out.update(CdsApp(session, settings).archive_states(up_to, ctx.actor))
+    return out
+
+
+@registry.task(
+    "credit.cds_recalculate",
+    title="Пересчёт CDS-кривых после сохранения кредитной кривой",
+    description=(
+        "Ставится автоматически при сохранении кредитной кривой: пересчитывает CDS-кривые контрольных лиц, "
+        "которые оцениваются по ней. Параметры: credit_curve, scope (state | history), as_of (для history)."
+    ),
+)
+def cds_recalculate(ctx: TaskContext) -> dict:
+    raw = ctx.params.get("as_of")
+    with ctx.session_factory() as session:
+        return CdsApp(session, get_settings()).recalc_for_credit_curve(
+            ctx.params["credit_curve"], ctx.params.get("scope", "state"), date.fromisoformat(raw) if raw else None, ctx.actor)
+
+
+@registry.task(
+    "credit.cds_rates_changed",
+    title="Пересчёт CDS-кривых после сохранения процентной кривой",
+    description=(
+        "Ставится сервисом процентных кривых при сохранении кривой (вместе с её узлами): CDS-кривые, кредитные кривые "
+        "которых дисконтируются по ней, пересчитываются на новых дисконт-факторах."
+    ),
+)
+def cds_rates_changed(ctx: TaskContext) -> dict:
+    with ctx.session_factory() as session:
+        return CdsApp(session, get_settings()).on_rates(ctx.params, ctx.actor)

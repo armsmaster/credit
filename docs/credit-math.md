@@ -4,6 +4,8 @@
 облигаций на Мосбирже. Код математики — `backend/services/credit/credit_service/domain/` (без фреймворков и БД),
 тесты — `backend/services/credit/tests/`.
 
+По этим кривым строятся CDS-кривые контрольных лиц — см. [cds-pricing.md](cds-pricing.md).
+
 ## 1. Данные с Мосбиржи (ISS)
 
 | Что | Откуда | Когда |

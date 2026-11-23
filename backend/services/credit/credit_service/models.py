@@ -197,3 +197,90 @@ class CurveHistory(_CurveSnapshot, Base):
     source: Mapped[str] = mapped_column(Text)  # snapshot | auto_archive | manual_edit
     created_by: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ------------------------------------------------------------------ CDS pricing
+class Calendar(Base):
+    """Business-day calendar: weekdays plus exceptions; may extend a base calendar (SPFI = Moscow + sessions)."""
+
+    __tablename__ = "calendars"
+
+    code: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    base_code: Mapped[str | None] = mapped_column(ForeignKey("calendars.code"))
+    description: Mapped[str] = mapped_column(Text, default="")
+
+
+class CalendarDay(Base):
+    __tablename__ = "calendar_days"
+
+    calendar_code: Mapped[str] = mapped_column(ForeignKey("calendars.code", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    is_business: Mapped[bool] = mapped_column(Boolean)
+    comment: Mapped[str] = mapped_column(Text, default="")
+    updated_by: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class CdsEntity(Base):
+    """Reference entity of CDS contracts, priced from a bond credit curve."""
+
+    __tablename__ = "cds_entities"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(Text, unique=True)
+    name: Mapped[str] = mapped_column(Text)
+    inn: Mapped[str | None] = mapped_column(Text)
+    ogrn: Mapped[str | None] = mapped_column(Text)
+    lei: Mapped[str | None] = mapped_column(Text)
+    reference_obligation: Mapped[str | None] = mapped_column(Text)  # ISIN of the reference obligation
+    credit_curve_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("curve_definitions.id"))
+    standard_coupon_bp: Mapped[int] = mapped_column(Integer, default=100)
+    max_tenor: Mapped[str] = mapped_column(Text, default="5Y")
+    recovery_override: Mapped[float | None] = mapped_column(Float)
+    doc_basis_bp: Mapped[float] = mapped_column(Float, default=0.0)  # Sber vs SPFI documentation basis
+    basis_bp: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)  # CDS–bond basis b(T) per tenor
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class _CdsSnapshot:
+    as_of_date: Mapped[date] = mapped_column(Date)
+    inputs: Mapped[dict[str, Any]] = mapped_column(JSONB)  # credit curve, discount curve, hazard, settings used
+    result: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    trigger: Mapped[str] = mapped_column(Text)  # credit_curve | rates | entity | manual
+
+
+class CdsState(_CdsSnapshot, Base):
+    __tablename__ = "cds_states"
+
+    entity_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cds_entities.id", ondelete="CASCADE"), primary_key=True)
+    calculated_by: Mapped[str] = mapped_column(Text)
+    calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CdsHistory(_CdsSnapshot, Base):
+    __tablename__ = "cds_history"
+    __table_args__ = (UniqueConstraint("entity_id", "as_of_date", "version", name="uq_cds_history_version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    entity_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cds_entities.id", ondelete="CASCADE"))
+    version: Mapped[int] = mapped_column(Integer)
+    source: Mapped[str] = mapped_column(Text)  # snapshot | auto_archive | backdated
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RateSnapshot(Base):
+    """Interest-rate curves pushed by the curves service on save (input of automatic CDS recalculation)."""
+
+    __tablename__ = "rate_snapshots"
+
+    code: Mapped[str] = mapped_column(Text, primary_key=True)
+    as_of_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    kind: Mapped[str] = mapped_column(Text)
+    version: Mapped[int | None] = mapped_column(Integer)
+    day_count: Mapped[str] = mapped_column(Text)
+    nodes: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

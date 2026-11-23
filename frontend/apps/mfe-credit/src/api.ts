@@ -3,6 +3,14 @@ import { downloadFile, getPlatform } from '@cds/platform'
 import type {
   Bond,
   BondDetail,
+  CalendarDay,
+  CalendarInfo,
+  CdsContractRequest,
+  CdsContractResult,
+  CdsEntity,
+  CdsMeta,
+  CdsSettings,
+  CdsSnapshot,
   BondManual,
   Calculation,
   CalcBond,
@@ -82,5 +90,35 @@ export const api = {
       downloadFile(`${BASE}/curves/${enc(code)}/history/${date}/export.xlsx${version ? `?version=${version}` : ''}`),
     calculation: (curve_code: string, as_of_date: string, p: CalcPayload) =>
       downloadFile(`${BASE}/calibrate/export.xlsx`, { body: { curve_code, as_of_date, ...p } }),
+  },
+  cds: {
+    meta: () => http().get<CdsMeta>(`${BASE}/cds/meta`),
+    saveSettings: (s: Partial<CdsSettings>) => http().put<CdsSettings>(`${BASE}/cds/settings`, s),
+    entities: () => http().get<CdsEntity[]>(`${BASE}/cds/entities`),
+    entity: (code: string) => http().get<CdsEntity>(`${BASE}/cds/entities/${enc(code)}`),
+    createEntity: (e: Record<string, unknown>) => http().post<CdsEntity>(`${BASE}/cds/entities`, e),
+    updateEntity: (code: string, e: Record<string, unknown>) => http().put<CdsEntity>(`${BASE}/cds/entities/${enc(code)}`, e),
+    recalculate: (code: string) => http().post<CdsSnapshot>(`${BASE}/cds/entities/${enc(code)}/recalculate`),
+    state: (code: string) => http().get<CdsSnapshot>(`${BASE}/cds/entities/${enc(code)}/state`),
+    history: (code: string) => http().get<{ as_of_date: string; latest_version: number; versions: number; source: string; author: string; saved_at: string; edited: boolean }[]>(`${BASE}/cds/entities/${enc(code)}/history`),
+    historyItem: (code: string, date: string, version?: number | null) =>
+      http().get<CdsSnapshot>(`${BASE}/cds/entities/${enc(code)}/history/${date}`, { version: version ?? undefined }),
+    calculate: (req: CdsContractRequest) => http().post<CdsContractResult>(`${BASE}/cds/calculator`, req),
+    excel: {
+      state: (code: string) => downloadFile(`${BASE}/cds/entities/${enc(code)}/state/export.xlsx`),
+      history: (code: string, date: string, version?: number | null) =>
+        downloadFile(`${BASE}/cds/entities/${enc(code)}/history/${date}/export.xlsx${version ? `?version=${version}` : ''}`),
+      contract: (req: CdsContractRequest) => downloadFile(`${BASE}/cds/calculator/export.xlsx`, { body: req }),
+      daily: (date: string) => downloadFile(`${BASE}/cds/daily.xlsx?date=${date}`),
+    },
+  },
+  calendars: {
+    list: () => http().get<CalendarInfo[]>(`${BASE}/calendars`),
+    days: (code: string, year: number) => http().get<CalendarDay[]>(`${BASE}/calendars/${enc(code)}/days`, { year }),
+    setDay: (code: string, day: string, is_business: boolean, comment: string) =>
+      http().put<void>(`${BASE}/calendars/${enc(code)}/days/${day}`, { is_business, comment }),
+    deleteDay: (code: string, day: string) => http().del<void>(`${BASE}/calendars/${enc(code)}/days/${day}`),
+    shift: (code: string, date: string, days: number) =>
+      http().get<{ date: string; days: number; result: string; following: string; is_business: boolean }>(`${BASE}/calendars/${enc(code)}/shift`, { date, days }),
   },
 }

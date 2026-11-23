@@ -317,3 +317,185 @@ export interface RateCurveDef {
   name: string
   currency_code: string
 }
+
+// ------------------------------------------------------------------ CDS
+export interface CdsSettings {
+  recovery_quote: number
+  tenors: string[]
+  coupons_bp: number[]
+  day_count: 'ACT/ACT.ISDA' | 'ACT/365F' | 'ACT/360'
+  protection_from_effective: boolean
+  rebate_mode: 'spec' | 'unadjusted_start' | 'inclusive_end'
+  sber_adjust_period_ends: boolean
+  sber_last_period_inclusive: boolean
+  spfi_calendar: string
+  sber_calendar: string
+}
+
+export interface CalendarInfo {
+  code: string
+  name: string
+  base_code: string | null
+  description: string
+  exceptions: number
+}
+
+export interface CalendarDay {
+  day: string
+  is_business: boolean
+  comment: string
+  updated_by: string
+  updated_at: string
+}
+
+export interface CdsMeta {
+  today: string
+  settings: CdsSettings
+  tenors: string[]
+  calendars: CalendarInfo[]
+  profiles: Record<string, string>
+}
+
+export interface CdsScheduleRow {
+  accrual_start: string
+  accrual_end: string
+  pay_date: string
+  days: number
+  year_frac: number
+  coupon: number
+  observation: string | null
+  df_pay: number | null
+  survival: number | null
+  pv_coupon: number | null
+  pv_aod: number | null
+  amount?: number
+  pv_amount?: number | null
+}
+
+export interface CdsContract {
+  maturity: string
+  effective_date: string
+  first_period_start: string
+  upfront_settle_date: string
+  rebate_start: string | null
+  rebate_end: string | null
+  rebate_year_frac: number
+  protection_start: string
+  protection: number
+  rpv01_dirty: number
+  rpv01_clean: number
+  df_settle: number
+  par_spread: number
+  qs: number
+  qs_flat_lambda: number
+  puf: Record<string, number>
+  survival: number
+  schedule: CdsScheduleRow[]
+}
+
+export interface CdsTenorRow extends CdsContract {
+  tenor: string
+  par_bond_bp: number
+  basis_bp: number
+  target_par_bp: number
+  lambda: number | null
+  dropped: boolean
+  par_spread_bp: number
+  qs_bp: number
+}
+
+export interface CdsResult {
+  valuation_date: string
+  effective_date: string
+  recovery: number
+  recovery_quote: number
+  standard_coupon: number
+  coupons: number[]
+  hazard: { t: number; date: string; lambda: number }[]
+  table: CdsTenorRow[]
+  monthly: { date: string; months: number; t: number; survival: number; hazard: number; bond_survival: number; bond_hazard: number }[]
+  warnings: string[]
+}
+
+export interface CdsSnapshot {
+  entity_code: string
+  entity_name: string
+  kind: 'state' | 'history'
+  as_of_date: string
+  version: number | null
+  source: string | null
+  trigger: string
+  trigger_title: string
+  author: string
+  saved_at: string
+  inputs: Record<string, any>
+  result: CdsResult
+}
+
+export interface CdsEntity {
+  code: string
+  name: string
+  inn: string | null
+  ogrn: string | null
+  lei: string | null
+  reference_obligation: string | null
+  credit_curve_code: string
+  standard_coupon_bp: number
+  max_tenor: string
+  recovery_override: number | null
+  doc_basis_bp: number
+  basis_bp: Record<string, number>
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  state: {
+    as_of_date: string
+    calculated_at: string
+    calculated_by: string
+    trigger: string
+    trigger_title: string
+    recovery: number
+    tenors: { tenor: string; par_spread_bp: number; qs_bp: number; puf: Record<string, number> }[]
+    warnings: string[]
+  } | null
+  warning?: string | null
+}
+
+export interface CdsContractRequest {
+  entity_code: string
+  as_of_date?: string | null
+  profile: 'SPFI_STD' | 'SBER_OTC'
+  trade_date?: string | null
+  maturity?: string | null
+  tenor?: string | null
+  coupon_bp?: number | null
+  notional?: number | null
+  side: 'buyer' | 'seller'
+  upfront_pct?: number | null
+  recovery?: number | null
+}
+
+export interface CdsContractResult extends CdsContract {
+  entity_code: string
+  curve_date: string
+  profile: string
+  trade_date: string
+  coupon_bp: number
+  notional: number
+  side: string
+  recovery: number
+  puf_model: number
+  par_spread_bp: number
+  qs_bp: number
+  rebate_amount: number
+  initial_payment_model: number
+  initial_payment_trade: number | null
+  pv_dirty: number
+  npv: number
+  upfront_pct: number | null
+  pd: number
+  jtd_buyer: number
+  doc_basis_bp: number
+  warnings: string[]
+  conventions: Record<string, string>
+}

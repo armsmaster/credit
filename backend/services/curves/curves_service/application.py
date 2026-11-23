@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, load_only
 from cds_common.audit import TAG_BACKDATED, AuditLog, diff
 from cds_common.auth import Principal
 from cds_common.errors import AppError, Conflict, NotFound
+from cds_common.tasks import Trigger, enqueue
 
 from .config import CurvesSettings
 from .domain.calibration import CalibrationParams, CalibrationResult, calibrate, par_curve
@@ -330,9 +331,22 @@ class CurvesApp:
             self.s, actor=actor, entity_type="curve", entity_id=code, action="state_save",
             summary=f"Сохранена текущая кривая {code} на {as_of}", changes=diff(before, after),
         )
+        self._notify_credit(code, as_of, result)
         self.s.commit()
         self.s.refresh(state)
         return state
+
+    def _notify_credit(self, code: str, as_of: date, result: dict[str, Any]) -> None:
+        """Hand the new curve to the credit service through the shared task queue (same transaction):
+        CDS curves discounted with it are recalculated. Skipped if the credit service is not deployed."""
+        params = {"code": code, "as_of_date": as_of.isoformat(), "kind": "state", "version": None,
+                  "day_count": result["conventions"]["day_count"],
+                  "nodes": [{"date": n["date"], "df": n["df"]} for n in result["nodes"]]}
+        try:
+            with self.s.begin_nested():
+                enqueue(self.s, "credit.cds_rates_changed", params, trigger=Trigger.SYSTEM, created_by="curves")
+        except AppError:
+            pass  # the task type is unknown: no credit worker has registered it
 
     # ------------------------------------------------------------------ history
     def list_history(self, code: str, date_from: date | None, date_to: date | None) -> list[dict[str, Any]]:

@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session, load_only
 from cds_common.audit import TAG_BACKDATED, AuditLog, diff
 from cds_common.auth import Principal
 from cds_common.errors import AppError, Conflict, NotFound
+from cds_common.tasks import Trigger, enqueue
 
 from . import settings_store
 from .catalog import CatalogApp
@@ -34,6 +35,7 @@ from .rates_client import RatesClient
 from .schemas import CalcBondIn, CalcPayload, DefinitionBase, DefinitionIn
 
 audit = AuditLog("credit")
+CDS_RECALC_TASK = "credit.cds_recalculate"
 
 
 def effective_params(defn: CurveDefinition, overrides: dict[str, Any] | None = None) -> CreditParams:
@@ -293,6 +295,13 @@ class CreditApp:
     def _requested_payload(payload: CalcPayload) -> dict[str, Any]:
         return payload.params.overrides()
 
+    def _enqueue_cds(self, params: dict[str, Any], actor: Principal) -> None:
+        try:
+            with self.s.begin_nested():
+                enqueue(self.s, CDS_RECALC_TASK, params, trigger=Trigger.SYSTEM, created_by=actor.username)
+        except AppError:
+            pass  # the worker has not registered the task type yet (first start after an upgrade)
+
     # ------------------------------------------------------------------ current state
     def get_state(self, code: str) -> tuple[CurveDefinition, CurveState]:
         defn = self.get_definition(code)
@@ -349,6 +358,8 @@ class CreditApp:
         changes["stats"] = {"old": None, "new": {k: calc["result"]["stats"].get(k) for k in ("rmse_bp", "max_abs_bp", "n_bonds")}}
         audit.record(self.s, actor=actor, entity_type="credit_curve", entity_id=code, action="state_save",
                      summary=f"Сохранена текущая кредитная кривая {code} на {as_of}", changes=changes)
+        # CDS curves priced from this credit curve are recalculated right after the save (same transaction)
+        self._enqueue_cds({"credit_curve": code, "scope": "state"}, actor)
         self.s.commit()
         self.s.refresh(state)
         return state
@@ -426,6 +437,7 @@ class CreditApp:
         audit.record(self.s, actor=actor, entity_type="credit_curve", entity_id=code, action="history_edit",
                      summary=f"Изменение задним числом: {code} на {as_of}, версия {version}. {comment}",
                      changes=changes, tags=[TAG_BACKDATED])
+        self._enqueue_cds({"credit_curve": code, "scope": "history", "as_of": as_of.isoformat()}, actor)
         self.s.commit()
         return row
 

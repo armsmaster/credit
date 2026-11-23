@@ -32,11 +32,11 @@
 docker login
 ```
 
-Соберите и опубликуйте образы (`<user>` — ваш логин Docker Hub, `0.4.0` — версия):
+Соберите и опубликуйте образы (`<user>` — ваш логин Docker Hub, `0.5.0` — версия):
 
 ```powershell
 $env:CDS_IMAGE_PREFIX = "docker.io/<user>"
-$env:CDS_VERSION = "0.4.0"
+$env:CDS_VERSION = "0.5.0"
 docker compose build admin curves credit shell mfe-admin mfe-curves mfe-credit
 docker compose push admin curves credit shell mfe-admin mfe-curves mfe-credit
 ```
@@ -44,14 +44,16 @@ docker compose push admin curves credit shell mfe-admin mfe-curves mfe-credit
 То же в bash:
 
 ```bash
-CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.4.0 docker compose build admin curves credit shell mfe-admin mfe-curves mfe-credit
+CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.5.0 docker compose build admin curves credit shell mfe-admin mfe-curves mfe-credit
 ```
 
 ```bash
-CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.4.0 docker compose push admin curves credit shell mfe-admin mfe-curves mfe-credit
+CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.5.0 docker compose push admin curves credit shell mfe-admin mfe-curves mfe-credit
 ```
 
 `push` перечисляет сервисы явно: остальные сервисы используют чужие образы, их публиковать не нужно.
+Если Docker Desktop падает во время сборки (не хватает памяти виртуальной машины), собирайте сервисы
+по одному: `docker compose build admin`, затем `curves` и т. д.
 Для каждой новой версии меняйте `CDS_VERSION` — тогда на стенде всегда понятно, что запущено.
 
 ## 2. Запуск в контуре
@@ -62,7 +64,7 @@ CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.4.0 docker compose push admin cu
 ```env
 DOCKERHUB_MIRROR=nexus.corp.local/dockerhub
 CDS_IMAGE_PREFIX=nexus.corp.local/dockerhub/<user>
-CDS_VERSION=0.4.0
+CDS_VERSION=0.5.0
 ```
 
 Скачайте образы и запустите без сборки:
@@ -121,6 +123,21 @@ docker compose cp ./cds-backup.dump postgres:/tmp/cds-backup.dump
 docker compose exec -T postgres pg_restore -U postgres -d cds --clean --if-exists /tmp/cds-backup.dump
 ```
 
+### Переход на 0.5.0 (прайсинг CDS)
+
+* Новый модуль в разделе кредитных кривых: CDS-кривые контрольных лиц, калькулятор CDS (СПФИ и Сбер), календари
+  рабочих дней, файл для position keeping (см. docs/cds-pricing.md).
+* Достаточно `CDS_VERSION=0.5.0`, `docker compose pull` и `docker compose up -d --no-build`: сервис `credit` сам
+  применит миграцию `0002_cds` (новые таблицы в схеме `credit`, календари «Москва» и «СПФИ»), новых переменных
+  в `.env` нет. Обновите оба сервиса `credit` и `curves` одной версией: `curves` после сохранения процентной кривой
+  ставит задачу пересчёта CDS-кривых.
+* После обновления:
+  1. **внесите праздники** в календари «Москва» и «СПФИ» (Календари рабочих дней) — пока их нет, рабочими
+     считаются все будни, и даты начала срока, ребейта и платежей могут сместиться;
+  2. проверьте настройки «Прайсинг CDS» (Настройки кредитных кривых): R<sub>q</sub>, сроки, режим ребейта;
+  3. заведите контрольные лица (CDS-кривые → «Контрольное лицо») с привязкой к кредитным кривым — CDS-кривая
+     посчитается сразу и дальше будет пересчитываться при каждом сохранении кредитной или процентной кривой.
+
 ### Переход на 0.4.0 (детализация расчётов в Excel)
 
 * Кнопка **Excel** у процентных и кредитных кривых: файл с формулами для проверки расчётов
@@ -175,7 +192,7 @@ docker compose exec -T postgres pg_restore -U postgres -d cds --clean --if-exist
 На машине с образами:
 
 ```bash
-docker save -o cds-images.tar local/cds-admin:0.4.0 local/cds-curves:0.4.0 local/cds-credit:0.4.0 local/cds-web-shell:0.4.0 local/cds-web-mfe-admin:0.4.0 local/cds-web-mfe-curves:0.4.0 local/cds-web-mfe-credit:0.4.0
+docker save -o cds-images.tar local/cds-admin:0.5.0 local/cds-curves:0.5.0 local/cds-credit:0.5.0 local/cds-web-shell:0.5.0 local/cds-web-mfe-admin:0.5.0 local/cds-web-mfe-curves:0.5.0 local/cds-web-mfe-credit:0.5.0
 ```
 
 В контуре (в `.env` оставьте `CDS_IMAGE_PREFIX=local`):
