@@ -98,12 +98,18 @@ pip обращается к зеркалу через недоступный и�
 напрямую независимо от `NO_PROXY`. Проверка из контейнера:
 
 ```bash
-docker compose exec credit python -c "import httpx; print(httpx.get('https://iss.moex.com/iss/index.json', timeout=20).status_code)"
+docker compose exec credit python -c "import httpx; from credit_service.iss import iss_ssl_context as c; print(httpx.get('https://iss.moex.com/iss/index.json', verify=c(), timeout=20).status_code)"
 ```
 
-* прокси подменяет TLS-сертификат корпоративным CA (ошибка `CERTIFICATE_VERIFY_FAILED`): смонтируйте файл CA
-  в контейнеры `credit` и `credit-worker` (например, через `docker-compose.override.yml`) и укажите путь
-  в `ISS_CA_BUNDLE`, либо переключитесь на открытый адрес `ISS_BASE_URL=http://iss.moex.com/iss`;
+* сертификат `iss.moex.com` выпущен **Russian Trusted Sub CA** (Минцифры); этого корня нет в стандартном
+  наборе Python (certifi), поэтому корневой и промежуточный сертификаты встроены в образ `credit`
+  (`credit_service/certs/russian_trusted_ca.crt`) и доверяются только для запросов к ISS. Простой
+  `httpx.get('https://iss.moex.com/...')` без этого контекста по-прежнему падает с `CERTIFICATE_VERIFY_FAILED` —
+  это ожидаемо;
+* прокси подменяет TLS-сертификат корпоративным CA (ошибка `CERTIFICATE_VERIFY_FAILED` и в проверке выше):
+  смонтируйте файл CA в контейнеры `credit` и `credit-worker` (например, через `docker-compose.override.yml`)
+  и укажите путь в `ISS_CA_BUNDLE` — он добавляется к доверенным CA, а не заменяет их; либо переключитесь
+  на открытый адрес `ISS_BASE_URL=http://iss.moex.com/iss`;
 * ISS сбрасывает соединения слишком частых клиентов: частота запросов ограничена `ISS_REQUESTS_PER_SECOND` (4);
 * бесплатные рыночные данные ISS приходят с задержкой 15 минут (`ISS_DELAY_MINUTES`; 0 — при подписке
   на данные в реальном времени).

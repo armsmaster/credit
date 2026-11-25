@@ -10,8 +10,9 @@ class CreditSettings(CommonSettings):
     api_prefix: str = "/api/credit"
 
     # Moscow Exchange ISS. Outbound internet goes through HTTP(S)_PROXY if it is set.
-    # Behind a TLS-intercepting proxy: point ISS_CA_BUNDLE at the corporate CA (mounted file)
-    # or use the plain-http endpoint http://iss.moex.com/iss.
+    # TLS trust for ISS = certifi + bundled Russian Trusted CA (iss.moex.com uses it) + ISS_CA_BUNDLE.
+    # Behind a TLS-intercepting proxy: point ISS_CA_BUNDLE at the corporate CA (mounted file; it is
+    # added to the trust, not replacing it) or use the plain-http endpoint http://iss.moex.com/iss.
     iss_base_url: str = "https://iss.moex.com/iss"
     iss_ca_bundle: str | None = None
     iss_requests_per_second: float = 4.0

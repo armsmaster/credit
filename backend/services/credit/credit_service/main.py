@@ -13,6 +13,6 @@ app.state.iss = IssClient(
     settings.iss_base_url,
     requests_per_second=settings.iss_requests_per_second,
     timeout=settings.iss_timeout_seconds,
-    verify=settings.iss_ca_bundle or True,
+    ca_bundle=settings.iss_ca_bundle,
 )
 app.state.market = MarketData(app.state.db.session_factory, settings, app.state.iss, settings.iss_delay_minutes)

@@ -3,15 +3,22 @@
 Free ISS data are delayed by 15 minutes. The server resets connections of aggressive clients,
 so requests are throttled (ISS_REQUESTS_PER_SECOND) and retried with back-off.
 Outbound HTTP goes through HTTP(S)_PROXY from the environment (corporate contour).
+
+TLS: iss.moex.com uses a certificate of Russian Trusted Sub CA, whose root is not in certifi. The client
+trusts certifi + the bundled Russian Trusted CA (certs/russian_trusted_ca.crt) + an optional extra CA file
+(ISS_CA_BUNDLE, e.g. the CA of a TLS-intercepting corporate proxy). This trust applies to ISS requests only.
 """
 from __future__ import annotations
 
 import logging
+import ssl
 import threading
 import time
 from datetime import date
+from pathlib import Path
 from typing import Any
 
+import certifi
 import httpx
 
 from cds_common.errors import UpstreamError
@@ -33,8 +40,20 @@ MARKET_DATA_COLUMNS = ("SECID", "BID", "OFFER", "LAST", "WAPRICE", "NUMTRADES", 
                        "TRADINGSTATUS", "LCURRENTPRICE")
 
 
+RUSSIAN_TRUSTED_CA = Path(__file__).parent / "certs" / "russian_trusted_ca.crt"
+
+
 class IssError(UpstreamError):
     code = "iss_unavailable"
+
+
+def iss_ssl_context(extra_ca_file: str | None = None) -> ssl.SSLContext:
+    """certifi + Russian Trusted Root/Sub CA + an optional extra CA file (added, not replacing)."""
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    ctx.load_verify_locations(cafile=str(RUSSIAN_TRUSTED_CA))
+    if extra_ca_file:
+        ctx.load_verify_locations(cafile=extra_ca_file)
+    return ctx
 
 
 def _rows(block: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -45,8 +64,8 @@ def _rows(block: dict[str, Any] | None) -> list[dict[str, Any]]:
 
 
 class IssClient:
-    def __init__(self, base_url: str, *, requests_per_second: float = 4.0, timeout: float = 30.0, verify: str | bool = True):
-        self._http = httpx.Client(base_url=base_url.rstrip("/") + "/", timeout=timeout, verify=verify, trust_env=True,
+    def __init__(self, base_url: str, *, requests_per_second: float = 4.0, timeout: float = 30.0, ca_bundle: str | None = None):
+        self._http = httpx.Client(base_url=base_url.rstrip("/") + "/", timeout=timeout, verify=iss_ssl_context(ca_bundle), trust_env=True,
                                   headers={"User-Agent": "cds-credit/1.0"})
         self._interval = 1.0 / max(requests_per_second, 0.1)
         self._lock = threading.Lock()

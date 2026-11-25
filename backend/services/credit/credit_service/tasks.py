@@ -25,7 +25,7 @@ registry = TaskRegistry(queue="credit")
 def _iss() -> IssClient:
     s = get_settings()
     return IssClient(s.iss_base_url, requests_per_second=s.iss_requests_per_second, timeout=s.iss_timeout_seconds,
-                     verify=s.iss_ca_bundle or True)
+                     ca_bundle=s.iss_ca_bundle)
 
 
 @registry.task(
