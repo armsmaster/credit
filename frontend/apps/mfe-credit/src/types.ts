@@ -685,3 +685,9 @@ export interface TradesMeta {
   entities: { code: string; name: string; standard_coupon_bp: number }[]
   triggers: Record<string, string>
 }
+
+export interface TradeMaturities {
+  effective_date: string
+  mode: 'standard' | 'custom'
+  tenors: { tenor: string; maturity: string }[]
+}

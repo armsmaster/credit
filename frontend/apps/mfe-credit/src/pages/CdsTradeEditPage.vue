@@ -48,6 +48,13 @@
               <el-date-picker v-model="form.maturity" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
             </el-form-item>
           </div>
+          <div v-if="maturities.length" class="tenors">
+            <el-tooltip placement="top" :content="tenorsHelp"><span class="hint">Срок:</span></el-tooltip>
+            <el-tooltip v-for="m in maturities" :key="m.tenor" placement="top" :content="`до ${formatDate(m.maturity)}`">
+              <el-button size="small" :type="form.maturity === m.maturity ? 'primary' : 'default'" :plain="form.maturity !== m.maturity"
+                @click="form.maturity = m.maturity">{{ m.tenor }}</el-button>
+            </el-tooltip>
+          </div>
           <el-form-item>
             <template #label>
               <span>Ребейт</span>
@@ -229,7 +236,7 @@ import { formatDate } from '@cds/platform'
 import { api } from '../api'
 import AmountInput from '../components/AmountInput.vue'
 import { num } from '../format'
-import type { TradeInput, TradeRow, TradeSchedule, TradeScheduleParams, TradesMeta, TradeTerms } from '../types'
+import type { TradeInput, TradeMaturities, TradeRow, TradeSchedule, TradeScheduleParams, TradesMeta, TradeTerms } from '../types'
 
 const route = useRoute()
 const router = useRouter()
@@ -275,6 +282,14 @@ const scheduleError = ref('')
 const previewing = ref(false)
 const termsChangedWithEdits = ref(false)
 const tagOptions = ref<{ name: string; trades: number }[]>([])
+const maturityInfo = ref<TradeMaturities | null>(null)
+const maturities = computed(() => maturityInfo.value?.tenors ?? [])
+const tenorsHelp = computed(() =>
+  maturityInfo.value?.mode === 'custom'
+    ? `Дата начала срока (${formatDate(maturityInfo.value.effective_date)}) + срок`
+    : `Стандартные даты CDS: от даты начала срока (${formatDate(maturityInfo.value?.effective_date ?? '')}) к ближайшему 20.06 или 20.12 + срок`,
+)
+let maturityTimer: ReturnType<typeof setTimeout> | undefined
 const tagsLoading = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined
 let seq = 0
@@ -379,6 +394,29 @@ watch(
   },
 )
 
+async function loadMaturities() {
+  if (!form.trade_date) {
+    maturityInfo.value = null
+    return
+  }
+  try {
+    maturityInfo.value = await api.trades.maturities({
+      trade_date: form.trade_date, effective_date: form.effective_date || null, rebate: form.rebate,
+      calendar: params.calendar, mode: params.mode,
+    })
+  } catch {
+    maturityInfo.value = null
+  }
+}
+
+watch(
+  () => [form.trade_date, form.effective_date, form.rebate, params.calendar, params.mode],
+  () => {
+    clearTimeout(maturityTimer)
+    maturityTimer = setTimeout(loadMaturities, 200)
+  },
+)
+
 async function loadTags(q: string) {
   tagsLoading.value = true
   try {
@@ -443,9 +481,13 @@ onMounted(async () => {
   } finally {
     loading.value = false
     setTimeout(() => (hydrating = false), 0)
+    loadMaturities()
   }
 })
-onBeforeUnmount(() => clearTimeout(timer))
+onBeforeUnmount(() => {
+  clearTimeout(timer)
+  clearTimeout(maturityTimer)
+})
 </script>
 
 <style scoped>
@@ -471,6 +513,20 @@ onBeforeUnmount(() => clearTimeout(timer))
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0 12px;
+}
+.tenors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: -8px 0 16px;
+}
+.tenors .el-button + .el-button {
+  margin-left: 0;
+}
+.tenors .hint {
+  margin-right: 4px;
+  cursor: help;
 }
 .coupon,
 .rebate {

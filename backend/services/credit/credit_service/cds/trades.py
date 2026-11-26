@@ -32,7 +32,9 @@ from cds_common.tasks import Trigger, enqueue
 from ..config import CreditSettings
 from ..models import CdsEntity, CdsHistory, CdsState, CdsTrade, CdsTradeTag, CdsTradeValuation, CdsTradeVersion, TradeTag
 from .application import CdsApp
-from .isda import SPFI, DiscountCurve, HazardCurve, cds_legs, price_legs, with_settings, yf_act365f
+from dateutil.relativedelta import relativedelta
+
+from .isda import SPFI, TENOR_MONTHS, DiscountCurve, HazardCurve, cds_legs, price_legs, standard_maturity, with_settings, yf_act365f
 from .schedule import ScheduleParams, generate, rows_of, schedule_from_rows
 
 audit = AuditLog("credit")
@@ -160,6 +162,16 @@ class TradeApp:
                 self.s.flush()
             tags.append(tag)
         return tags
+
+    def standard_maturities(self, trade_date: date, effective_date: date | None, rebate: bool, calendar: str | None,
+                            mode: str) -> dict[str, Any]:
+        """Expiration dates of the standard tenors: CDS dates (SPFI semi-annual roll, 20 Jun / 20 Dec) for standard
+        schedules, the effective date + tenor for own schedules."""
+        cal = self.cds.calendar(calendar or self.cds.config()["spfi_calendar"])
+        eff = effective_date or (cal.add_business_days(trade_date, 1) if rebate else trade_date)
+        tenors = [{"tenor": t, "maturity": eff + relativedelta(months=m) if mode == "custom" else standard_maturity(eff, t)}
+                  for t, m in TENOR_MONTHS.items()]
+        return {"effective_date": eff, "mode": mode, "tenors": tenors}
 
     # ------------------------------------------------------------------ schedule
     def _terms(self, data: dict[str, Any]) -> dict[str, Any]:

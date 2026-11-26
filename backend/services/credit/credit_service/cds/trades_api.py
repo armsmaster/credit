@@ -77,6 +77,14 @@ def tags(q: str | None = None, app: TradeApp = Depends(get_trades), _: Principal
     return app.tags(q)
 
 
+@router.get("/maturities")
+def maturities(trade_date: date, effective_date: date | None = None, rebate: bool = True, calendar: str | None = None,
+               mode: Literal["standard", "custom"] = "standard", app: TradeApp = Depends(get_trades),
+               _: Principal = Depends(require_viewer)) -> dict[str, Any]:
+    """Expiration dates of the standard tenors (6M…10Y) for the quick buttons of the trade form."""
+    return app.standard_maturities(trade_date, effective_date, rebate, calendar, mode)
+
+
 @router.post("/schedule")
 def schedule_preview(data: TermsIn, app: TradeApp = Depends(get_trades), _: Principal = Depends(require_viewer)) -> dict[str, Any]:
     """Generated schedule or the edited rows normalised (amounts follow the dates unless typed by hand)."""

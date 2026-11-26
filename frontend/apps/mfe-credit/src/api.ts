@@ -27,6 +27,7 @@ import type {
   Snapshot,
   TradeDetail,
   TradeInput,
+  TradeMaturities,
   TradeSchedule,
   TradeSearch,
   TradeTerms,
@@ -125,6 +126,8 @@ export const api = {
     meta: () => http().get<TradesMeta>(`${BASE}/cds/trades/meta`),
     tags: (q?: string) => http().get<{ name: string; trades: number }[]>(`${BASE}/cds/trades/tags`, { q }),
     schedule: (t: TradeTerms) => http().post<TradeSchedule>(`${BASE}/cds/trades/schedule`, t),
+    maturities: (q: { trade_date: string; effective_date?: string | null; rebate: boolean; calendar?: string | null; mode: string }) =>
+      http().get<TradeMaturities>(`${BASE}/cds/trades/maturities`, q),
     search: (q: { date?: string; q?: string; entity?: string; tag?: string[]; side?: string; status?: string }) =>
       http().get<TradeSearch>(`${BASE}/cds/trades`, q),
     get: (id: string) => http().get<TradeDetail>(`${BASE}/cds/trades/${enc(id)}`),

@@ -28,14 +28,16 @@
             </el-form-item>
           </div>
           <el-form-item label="Плановая дата прекращения">
-            <el-radio-group v-model="maturityMode" size="small" class="mb4">
-              <el-radio-button value="tenor">стандартный срок</el-radio-button>
-              <el-radio-button value="date">дата</el-radio-button>
-            </el-radio-group>
-            <el-select v-if="maturityMode === 'tenor'" v-model="req.tenor" style="width: 120px">
-              <el-option v-for="t in tenors" :key="t" :value="t" />
-            </el-select>
-            <el-date-picker v-else v-model="req.maturity" type="date" value-format="YYYY-MM-DD" />
+            <div class="maturity">
+              <el-radio-group v-model="maturityMode">
+                <el-radio-button value="tenor">стандартный срок</el-radio-button>
+                <el-radio-button value="date">дата</el-radio-button>
+              </el-radio-group>
+              <el-select v-if="maturityMode === 'tenor'" v-model="req.tenor" class="grow">
+                <el-option v-for="t in tenors" :key="t" :value="t" />
+              </el-select>
+              <el-date-picker v-else v-model="req.maturity" type="date" value-format="YYYY-MM-DD" class="grow" />
+            </div>
           </el-form-item>
           <div class="two">
             <el-form-item label="Купон, б.п.">
@@ -322,9 +324,18 @@ onMounted(async () => {
   line-height: 1.3;
   margin-top: 4px;
 }
-.mb4 {
-  margin-bottom: 6px;
-  display: block;
+.maturity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+.maturity .el-radio-group {
+  flex: none;
+}
+.maturity .grow {
+  flex: 1;
+  min-width: 0;
 }
 .quote {
   border-top: 1px dashed var(--el-border-color);
