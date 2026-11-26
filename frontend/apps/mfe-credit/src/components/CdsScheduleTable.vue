@@ -14,22 +14,22 @@
     </div>
     <el-table :data="rows" size="small" border show-summary :summary-method="summary">
       <el-table-column type="index" label="№" width="46" />
-      <el-table-column label="Начало" width="105"><template #default="{ row }">{{ formatDate(row.accrual_start) }}</template></el-table-column>
-      <el-table-column label="Конец" width="120">
+      <el-table-column label="Начало" min-width="105"><template #default="{ row }">{{ formatDate(row.accrual_start) }}</template></el-table-column>
+      <el-table-column label="Конец" min-width="120">
         <template #default="{ row, $index }">{{ formatDate(row.accrual_end) }}<span v-if="$index === rows.length - 1" class="muted"> (вкл.)</span></template>
       </el-table-column>
-      <el-table-column label="Платёж" width="105"><template #default="{ row }">{{ formatDate(row.pay_date) }}</template></el-table-column>
-      <el-table-column label="Дней" width="60" align="right" prop="days" />
-      <el-table-column label="Доля года α" width="100" align="right"><template #default="{ row }">{{ num(row.year_frac, 6) }}</template></el-table-column>
-      <el-table-column :label="notional ? 'Купон, ₽' : 'Купон, % ном.'" width="130" align="right">
+      <el-table-column label="Платёж" min-width="105"><template #default="{ row }">{{ formatDate(row.pay_date) }}</template></el-table-column>
+      <el-table-column label="Дней" min-width="60" align="right" prop="days" />
+      <el-table-column label="Доля года α" min-width="100" align="right"><template #default="{ row }">{{ num(row.year_frac, 6) }}</template></el-table-column>
+      <el-table-column :label="notional ? 'Купон, ₽' : 'Купон, % ном.'" min-width="130" align="right">
         <template #default="{ row }">{{ notional ? money(coupon * notional * row.year_frac) : num(coupon * row.year_frac * 100, 4) }}</template>
       </el-table-column>
-      <el-table-column label="DF платежа" width="100" align="right"><template #default="{ row }">{{ num(row.df_pay, 6) }}</template></el-table-column>
-      <el-table-column label="Дожитие Q" width="100" align="right">
+      <el-table-column label="DF платежа" min-width="100" align="right"><template #default="{ row }">{{ num(row.df_pay, 6) }}</template></el-table-column>
+      <el-table-column label="Дожитие Q" min-width="100" align="right">
         <template #header><el-tooltip content="Вероятность дожития до последнего дня периода"><span>Дожитие Q</span></el-tooltip></template>
         <template #default="{ row }">{{ num(row.survival, 6) }}</template>
       </el-table-column>
-      <el-table-column :label="notional ? 'PV купона, ₽' : 'PV, % ном.'" width="120" align="right">
+      <el-table-column :label="notional ? 'PV купона, ₽' : 'PV, % ном.'" min-width="120" align="right">
         <template #default="{ row }">{{ row.pv_coupon == null ? '—' : notional ? money(notional * row.pv_coupon * (coupon / std)) : num(row.pv_coupon * (coupon / std) * 100, 4) }}</template>
       </el-table-column>
       <el-table-column label="AoD" min-width="100" align="right">

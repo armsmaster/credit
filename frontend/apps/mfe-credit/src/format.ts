@@ -8,6 +8,26 @@ export function money(v: number | null | undefined): string {
   return v.toFixed(0)
 }
 
+const AMOUNT_UNITS: [number, string][] = [
+  [1e12, 'трлн'],
+  [1e9, 'млрд'],
+  [1e6, 'млн'],
+  [1e3, 'тыс.'],
+]
+
+/** A ruble amount in words of its order: 100 млн ₽, 2,5 млрд ₽, ≈ 1,235 млрд ₽ (≈ when digits are rounded off). */
+export function amountShort(v: number | null | undefined, unit = '₽'): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return ''
+  for (const [scale, name] of AMOUNT_UNITS) {
+    if (Math.abs(v) < scale) continue
+    const x = v / scale
+    const r = Math.round(x * 1000) / 1000
+    const approx = Math.abs(r - x) > 1e-9 * Math.max(1, Math.abs(x))
+    return `${approx ? '≈ ' : ''}${r.toLocaleString('ru-RU', { maximumFractionDigits: 3 })} ${name} ${unit}`
+  }
+  return `${v.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ${unit}`
+}
+
 export function num(v: number | null | undefined, digits = 2): string {
   if (v === null || v === undefined || Number.isNaN(v)) return '—'
   return v.toLocaleString('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits })

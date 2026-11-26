@@ -86,10 +86,10 @@
               <el-radio-button v-for="r in snap.result.table" :key="r.tenor" :value="r.tenor">{{ r.tenor }}</el-radio-button>
             </el-radio-group>
             <span class="muted">номинал</span>
-            <el-input-number v-model="notional" :min="1" :step="1000000" size="small" controls-position="right" style="width: 160px" />
+            <AmountInput v-model="notional" size="small" width="150px" inline-caption />
           </div>
         </template>
-        <CdsScheduleTable :contract="scheduleRow" :coupon="entity.standard_coupon_bp / 1e4" :notional="notional" />
+        <CdsScheduleTable :contract="scheduleRow" :coupon="entity.standard_coupon_bp / 1e4" :notional="notional ?? 0" />
       </el-card>
     </template>
 
@@ -107,6 +107,7 @@ import { formatDate, formatDateTime, getPlatform, Role } from '@cds/platform'
 
 import { api } from '../api'
 import CdsEntityDialog from '../components/CdsEntityDialog.vue'
+import AmountInput from '../components/AmountInput.vue'
 import CdsScheduleTable from '../components/CdsScheduleTable.vue'
 import EChart from '../components/EChart.vue'
 import { num } from '../format'
@@ -123,7 +124,7 @@ const history = ref<{ as_of_date: string; versions: number; edited: boolean }[]>
 const historyKey = ref<string | null>(null)
 const tenors = ref<string[]>([])
 const scheduleTenor = ref('5Y')
-const notional = ref(100_000_000)
+const notional = ref<number | null>(100_000_000)
 const dialogOpen = ref(false)
 const recalculating = ref(false)
 const exporting = ref(false)

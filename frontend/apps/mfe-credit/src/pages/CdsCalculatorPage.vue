@@ -42,7 +42,7 @@
               <el-input-number v-model="req.coupon_bp" :min="0" :max="10000" :step="5" controls-position="right" />
             </el-form-item>
             <el-form-item label="Номинал, ₽">
-              <el-input-number v-model="req.notional" :min="1" :step="10000000" controls-position="right" />
+              <AmountInput v-model="req.notional" />
             </el-form-item>
             <el-form-item label="Сторона" class="full">
               <el-radio-group v-model="req.side">
@@ -126,6 +126,7 @@ import { useRoute } from 'vue-router'
 import { formatDate } from '@cds/platform'
 
 import { api } from '../api'
+import AmountInput from '../components/AmountInput.vue'
 import CdsScheduleTable from '../components/CdsScheduleTable.vue'
 import { num } from '../format'
 import type { CdsContractRequest, CdsContractResult, CdsEntity, CdsQuoteConversion } from '../types'
@@ -306,7 +307,7 @@ onMounted(async () => {
 }
 .layout {
   display: grid;
-  grid-template-columns: 380px minmax(0, 1fr);
+  grid-template-columns: 440px minmax(0, 1fr);
   gap: 12px;
   align-items: start;
 }
