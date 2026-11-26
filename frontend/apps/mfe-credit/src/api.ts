@@ -3,17 +3,18 @@ import { downloadFile, getPlatform } from '@cds/platform'
 import type {
   Bond,
   BondDetail,
+  BondManual,
+  CalcBond,
+  Calculation,
   CalendarDay,
   CalendarInfo,
   CdsContractRequest,
   CdsContractResult,
   CdsEntity,
   CdsMeta,
+  CdsQuoteConversion,
   CdsSettings,
   CdsSnapshot,
-  BondManual,
-  Calculation,
-  CalcBond,
   CompareCurve,
   Definition,
   HistoryDate,
@@ -104,6 +105,7 @@ export const api = {
     historyItem: (code: string, date: string, version?: number | null) =>
       http().get<CdsSnapshot>(`${BASE}/cds/entities/${enc(code)}/history/${date}`, { version: version ?? undefined }),
     calculate: (req: CdsContractRequest) => http().post<CdsContractResult>(`${BASE}/cds/calculator`, req),
+    convertQuote: (req: CdsContractRequest) => http().post<CdsQuoteConversion>(`${BASE}/cds/calculator/quote`, req),
     excel: {
       state: (code: string) => downloadFile(`${BASE}/cds/entities/${enc(code)}/state/export.xlsx`),
       history: (code: string, date: string, version?: number | null) =>

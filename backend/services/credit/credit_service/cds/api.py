@@ -72,7 +72,9 @@ class ContractIn(BaseModel):
     coupon_bp: float | None = Field(None, ge=0, le=10000)
     notional: float | None = Field(None, gt=0)
     side: Literal["buyer", "seller"] = "buyer"
-    upfront_pct: float | None = Field(None, ge=-100, le=100)
+    upfront_pct: float | None = Field(None, ge=-100, le=100)  # trade price as upfront (PUF), % of notional
+    qs_bp: float | None = Field(None, gt=0, le=20000)  # trade price as quoted spread (QS)
+    quote_input: Literal["qs", "puf"] | None = None  # which of the two the user entered (the other one is derived)
     recovery: float | None = Field(None, ge=0, lt=1)
 
 
@@ -206,6 +208,12 @@ def get_history(code: str, as_of: date, version: int | None = None, app: CdsApp 
 def calculator(req: ContractIn, app: CdsApp = Depends(get_cds), _: Principal = Depends(require_viewer)) -> dict[str, Any]:
     """Any contract on the CDS curve of a reference entity: schedule, rebate, PUF/QS/par, NPV of the given terms."""
     return app.calculate_contract(req.model_dump())
+
+
+@router.post("/calculator/quote")
+def calculator_quote(req: ContractIn, app: CdsApp = Depends(get_cds), _: Principal = Depends(require_viewer)) -> dict[str, Any]:
+    """QS ↔ upfront (PUF) of the contract by the ISDA convention: the flat hazard curve with recovery Rq that prices the quote."""
+    return app.convert_quote(req.model_dump())
 
 
 @router.post("/calculator/export.xlsx")

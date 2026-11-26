@@ -39,6 +39,9 @@ from .isda import (
     Quote,
     bootstrap,
     build_schedule,
+    flat_hazard_for_puf,
+    price,
+    puf_to_qs_detail,
     standard_maturity,
     with_settings,
     yf_act365f,
@@ -417,7 +420,8 @@ class CdsApp:
                               .order_by(CdsHistory.version.desc()).limit(1)).first()
 
     # ------------------------------------------------------------------ contract calculator
-    def calculate_contract(self, req: dict[str, Any]) -> dict[str, Any]:
+    def _contract_context(self, req: dict[str, Any]) -> dict[str, Any]:
+        """Curve snapshot, conventions, discount curve and schedule of the contract described by the request."""
         entity = self.get_entity(req["entity_code"])
         snap: CdsState | CdsHistory
         if req.get("as_of_date"):
@@ -426,14 +430,78 @@ class CdsApp:
                 raise NotFound(f"Нет CDS-кривой {entity.code} на {req['as_of_date']}")
         else:
             _, snap = self.get_state(entity.code)
-        res, inputs = snap.result, snap.inputs
         valuation = snap.as_of_date
         profile = req.get("profile") or "SPFI_STD"
         if profile not in PROFILES:
             raise AppError("Неизвестный профиль конвенций", code="invalid_contract")
         conv, cal = self.conventions(profile)
-        dc = DiscountCurve(valuation, [date.fromisoformat(n["date"]) for n in inputs["discount"]["nodes"]],
-                           [float(n["df"]) for n in inputs["discount"]["nodes"]])
+        nodes = snap.inputs["discount"]["nodes"]
+        dc = DiscountCurve(valuation, [date.fromisoformat(n["date"]) for n in nodes], [float(n["df"]) for n in nodes])
+        trade_date = req.get("trade_date") or valuation
+        if trade_date < valuation:
+            raise AppError("Дата сделки не может быть раньше даты кривой", code="invalid_contract")
+        if req.get("maturity"):
+            maturity = req["maturity"]
+        else:
+            eff = cal.add_business_days(trade_date, conv.effective_lag_bd) if conv.effective_lag_bd else trade_date
+            maturity = standard_maturity(eff, req.get("tenor") or "5Y")
+        if maturity <= cal.add_business_days(trade_date, 2):
+            raise AppError("Плановая дата прекращения — не раньше T + 3 рабочих дней", code="invalid_contract")
+        coupon = float(req["coupon_bp"]) / 1e4 if req.get("coupon_bp") is not None else entity.standard_coupon_bp / 1e4
+        return {
+            "entity": entity, "snap": snap, "res": snap.result, "inputs": snap.inputs, "valuation": valuation, "profile": profile,
+            "conv": conv, "cal": cal, "dc": dc, "trade_date": trade_date, "maturity": maturity, "coupon": coupon,
+            "notional": float(req.get("notional") or 1e8), "sched": build_schedule(trade_date, maturity, conv, cal),
+        }
+
+    @staticmethod
+    def _convert(ctx: dict[str, Any], *, qs: float | None = None, puf: float | None = None) -> tuple[float, float, float]:
+        """ISDA quote convention: (QS, PUF, flat λ) of the flat hazard curve with recovery Rq that prices the quote.
+        QS → the flat curve whose par spread is QS → PUF at the contract coupon; PUF → the flat curve with that PUF → QS."""
+        sched, val, cpn, conv, dc = ctx["sched"], ctx["valuation"], ctx["coupon"], ctx["conv"], ctx["dc"]
+        rq = float(ctx["res"]["recovery_quote"])
+        try:
+            if qs is not None:
+                lam = flat_hazard_for_puf(sched, val, qs, rq, conv, dc, 0.0)
+                puf = price(sched, val, cpn, rq, conv, dc, HazardCurve.flat(val, lam))["puf"]
+            elif puf is not None:
+                qs, lam = puf_to_qs_detail(sched, val, cpn, puf, conv, dc, rq)
+            else:
+                raise AppError("Задайте QS или upfront (PUF)", code="invalid_quote")
+        except BracketError:
+            raise AppError("Котировка вне допустимого диапазона: плоская кривая с такой ценой требует λ ≤ 0 или λ > 500%",
+                           code="invalid_quote") from None
+        return qs, puf, lam
+
+    @staticmethod
+    def _quote_source(req: dict[str, Any]) -> str | None:
+        src = req.get("quote_input")
+        if src == "qs" and req.get("qs_bp") is not None or src == "puf" and req.get("upfront_pct") is not None:
+            return src
+        return "puf" if req.get("upfront_pct") is not None else "qs" if req.get("qs_bp") is not None else None
+
+    def convert_quote(self, req: dict[str, Any]) -> dict[str, Any]:
+        """QS ↔ upfront (PUF) of the contract by the ISDA convention (flat hazard, Rq); needs only the discount curve."""
+        ctx = self._contract_context(req)
+        src = self._quote_source(req)
+        if src is None:
+            raise AppError("Задайте QS или upfront (PUF)", code="invalid_quote")
+        qs, puf, lam = self._convert(ctx, **({"qs": float(req["qs_bp"]) / 1e4} if src == "qs" else {"puf": float(req["upfront_pct"]) / 100}))
+        sched, cpn, n = ctx["sched"], ctx["coupon"], ctx["notional"]
+        return {
+            "quote_input": src, "qs_bp": qs * 1e4, "upfront_pct": puf * 100, "flat_lambda": lam,
+            "recovery_quote": float(ctx["res"]["recovery_quote"]), "coupon_bp": cpn * 1e4, "curve_date": ctx["valuation"].isoformat(),
+            "maturity": sched.maturity.isoformat(), "effective_date": sched.effective_date.isoformat(),
+            "upfront_settle_date": sched.upfront_settle_date.isoformat(), "rebate_year_frac": sched.rebate_year_frac,
+            "upfront_amount": puf * n, "rebate_amount": -cpn * n * sched.rebate_year_frac,
+            "initial_payment": (puf - cpn * sched.rebate_year_frac) * n,
+        }
+
+    def calculate_contract(self, req: dict[str, Any]) -> dict[str, Any]:
+        ctx = self._contract_context(req)
+        entity, res, inputs, valuation, profile = ctx["entity"], ctx["res"], ctx["inputs"], ctx["valuation"], ctx["profile"]
+        conv, cal, dc, trade_date, sched = ctx["conv"], ctx["cal"], ctx["dc"], ctx["trade_date"], ctx["sched"]
+        notional, coupon = ctx["notional"], ctx["coupon"]
         recovery = float(req["recovery"]) if req.get("recovery") is not None else float(res["recovery"])
         hc = HazardCurve(valuation, [h["t"] for h in res["hazard"]], [h["lambda"] for h in res["hazard"]])
         warnings: list[str] = []
@@ -448,30 +516,25 @@ class CdsApp:
                 raise AppError(f"Не удалось перестроить кривую: {exc}", code="cds_failed") from None
             if doc_basis:
                 warnings.append(f"Кривая перестроена с документационным базисом Сбера {doc_basis:+.1f} б.п.")
-        trade_date = req.get("trade_date") or valuation
-        if trade_date < valuation:
-            raise AppError("Дата сделки не может быть раньше даты кривой", code="invalid_contract")
-        if req.get("maturity"):
-            maturity = req["maturity"]
-        else:
-            eff = cal.add_business_days(trade_date, conv.effective_lag_bd) if conv.effective_lag_bd else trade_date
-            maturity = standard_maturity(eff, req.get("tenor") or "5Y")
-        if maturity <= cal.add_business_days(trade_date, 2):
-            raise AppError("Плановая дата прекращения — не раньше T + 3 рабочих дней", code="invalid_contract")
-        notional = float(req.get("notional") or 1e8)
-        coupon = float(req["coupon_bp"]) / 1e4 if req.get("coupon_bp") is not None else entity.standard_coupon_bp / 1e4
         sign = 1.0 if (req.get("side") or "buyer") == "buyer" else -1.0
-        sched = build_schedule(trade_date, maturity, conv, cal)
         out = contract_result(sched, valuation, hc, dc, conv, recovery, float(res["recovery_quote"]), coupon, [coupon])
         puf_model = out["puf"][f"{round(coupon * 1e4)}"]
         pv_dirty = out["protection"] - coupon * out["rpv01_dirty"]
-        upfront = req.get("upfront_pct")
+        # the trade quote: upfront (PUF) or QS, converted into each other by the ISDA convention
+        src = self._quote_source(req)
+        upfront, trade_qs, trade_lam = None, None, None
+        if src == "qs":
+            trade_qs, puf_trade, trade_lam = self._convert(ctx, qs=float(req["qs_bp"]) / 1e4)
+            upfront = puf_trade * 100
+        elif src == "puf":
+            upfront = float(req["upfront_pct"])
+            trade_qs, _, trade_lam = self._convert(ctx, puf=upfront / 100)
         npv = sign * notional * pv_dirty
         initial_model = (puf_model - coupon * sched.rebate_year_frac) * notional
         initial_trade = None
         if upfront is not None:
-            initial_trade = (float(upfront) / 100.0 - coupon * sched.rebate_year_frac) * notional
-            npv = sign * notional * out["df_settle"] * (puf_model - float(upfront) / 100.0)
+            initial_trade = (upfront / 100.0 - coupon * sched.rebate_year_frac) * notional
+            npv = sign * notional * out["df_settle"] * (puf_model - upfront / 100.0)
         for row in out["schedule"]:
             row["amount"] = notional * row["coupon"]
             row["pv_amount"] = notional * row["pv_coupon"] if row["pv_coupon"] is not None else None
@@ -485,6 +548,8 @@ class CdsApp:
             "rebate_amount": -coupon * notional * sched.rebate_year_frac,
             "initial_payment_model": initial_model, "initial_payment_trade": initial_trade,
             "pv_dirty": pv_dirty, "npv": npv, "upfront_pct": upfront, "pd": 1.0 - out["survival"],
+            "quote_input": src, "trade_qs_bp": trade_qs * 1e4 if trade_qs is not None else None, "trade_flat_lambda": trade_lam,
+            "recovery_quote": float(res["recovery_quote"]),
             "jtd_buyer": notional * (1.0 - recovery), "doc_basis_bp": doc_basis, "warnings": warnings,
             "hazard": [{"t": t, "date": (valuation + timedelta(days=round(t * 365))).isoformat(), "lambda": lam}
                        for t, lam in zip(hc.times, hc.lambdas)],

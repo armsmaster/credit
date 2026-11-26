@@ -368,8 +368,18 @@ def build_contract(res: dict[str, Any]) -> bytes:
     X.kv(ws, 7, "Сторона", "покупатель защиты" if res["side"] == "buyer" else "продавец защиты")
     X.kv(ws, 8, "Знак", 1 if res["side"] == "buyer" else -1, comment="+1 покупатель, −1 продавец: все величины продавца = величины покупателя с минусом.")
     X.name(book.wb, "SIGN", X.ref(ws, 2, 8))
-    X.kv(ws, 9, "Upfront сделки, % (PUF)", res.get("upfront_pct"), fmt="0.0000")
+    src = res.get("quote_input")
+    derived = "выведен из QS по конвенции ISDA (плоская λ, Rq)"
+    X.kv(ws, 9, "Upfront сделки, % (PUF)", res.get("upfront_pct"), fmt="0.0000",
+         comment=(derived[0].upper() + derived[1:] + "." if src == "qs" else "Введён пользователем.") if src else "Цена сделки не задана.")
     X.kv(ws, 10, "Конвенции", f"{conv.get('name')}, купон {conv.get('day_count')}, календарь {conv.get('calendar')}")
+    if res.get("trade_qs_bp") is not None:
+        X.kv(ws, 11, "QS сделки, б.п.", res["trade_qs_bp"], fmt=X.BP,
+             comment=("Введён пользователем; PUF " + derived.replace("выведен из QS", "выведен из него") if src == "qs" else
+                      "Выведен из PUF по конвенции ISDA: плоская λ с Rq, при которой PUF при купоне c равен upfront сделки; QS — par spread этой кривой."))
+        X.kv(ws, 12, "Плоская λ котировки (Rq)", res["trade_flat_lambda"], fmt=X.DF9,
+             comment=f"Плоская интенсивность с Rq = {res.get('recovery_quote', 0.4):.0%}: на ней QS — par spread, а PUF — upfront при купоне c. "
+                     "Ищется численно (Брент) — справочная величина.")
     h = 13
     cpn = res["coupon_bp"] / BP
     _summary_header(ws, h, [cpn])

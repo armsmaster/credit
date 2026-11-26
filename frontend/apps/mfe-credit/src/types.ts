@@ -472,7 +472,26 @@ export interface CdsContractRequest {
   notional?: number | null
   side: 'buyer' | 'seller'
   upfront_pct?: number | null
+  qs_bp?: number | null
+  quote_input?: 'qs' | 'puf' | null
   recovery?: number | null
+}
+
+export interface CdsQuoteConversion {
+  quote_input: 'qs' | 'puf'
+  qs_bp: number
+  upfront_pct: number
+  flat_lambda: number
+  recovery_quote: number
+  coupon_bp: number
+  curve_date: string
+  maturity: string
+  effective_date: string
+  upfront_settle_date: string
+  rebate_year_frac: number
+  upfront_amount: number
+  rebate_amount: number
+  initial_payment: number
 }
 
 export interface CdsContractResult extends CdsContract {
@@ -493,6 +512,10 @@ export interface CdsContractResult extends CdsContract {
   pv_dirty: number
   npv: number
   upfront_pct: number | null
+  quote_input: 'qs' | 'puf' | null
+  trade_qs_bp: number | null
+  trade_flat_lambda: number | null
+  recovery_quote: number
   pd: number
   jtd_buyer: number
   doc_basis_bp: number

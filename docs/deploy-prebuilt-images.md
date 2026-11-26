@@ -32,11 +32,11 @@
 docker login
 ```
 
-Соберите и опубликуйте образы (`<user>` — ваш логин Docker Hub, `0.5.1` — версия):
+Соберите и опубликуйте образы (`<user>` — ваш логин Docker Hub, `0.6.0` — версия):
 
 ```powershell
 $env:CDS_IMAGE_PREFIX = "docker.io/<user>"
-$env:CDS_VERSION = "0.5.1"
+$env:CDS_VERSION = "0.6.0"
 docker compose build admin curves credit shell mfe-admin mfe-curves mfe-credit
 docker compose push admin curves credit shell mfe-admin mfe-curves mfe-credit
 ```
@@ -44,11 +44,11 @@ docker compose push admin curves credit shell mfe-admin mfe-curves mfe-credit
 То же в bash:
 
 ```bash
-CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.5.1 docker compose build admin curves credit shell mfe-admin mfe-curves mfe-credit
+CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.6.0 docker compose build admin curves credit shell mfe-admin mfe-curves mfe-credit
 ```
 
 ```bash
-CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.5.1 docker compose push admin curves credit shell mfe-admin mfe-curves mfe-credit
+CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.6.0 docker compose push admin curves credit shell mfe-admin mfe-curves mfe-credit
 ```
 
 `push` перечисляет сервисы явно: остальные сервисы используют чужие образы, их публиковать не нужно.
@@ -64,7 +64,7 @@ CDS_IMAGE_PREFIX=docker.io/<user> CDS_VERSION=0.5.1 docker compose push admin cu
 ```env
 DOCKERHUB_MIRROR=nexus.corp.local/dockerhub
 CDS_IMAGE_PREFIX=nexus.corp.local/dockerhub/<user>
-CDS_VERSION=0.5.1
+CDS_VERSION=0.6.0
 ```
 
 Скачайте образы и запустите без сборки:
@@ -122,6 +122,13 @@ docker compose cp ./cds-backup.dump postgres:/tmp/cds-backup.dump
 ```bash
 docker compose exec -T postgres pg_restore -U postgres -d cds --clean --if-exists /tmp/cds-backup.dump
 ```
+
+### Переход на 0.6.0 (конверсия QS ↔ upfront в калькуляторе CDS)
+
+* В калькуляторе CDS цену сделки или заявки СПФИ можно ввести как QS или как upfront (PUF) — второе считается
+  автоматически по конвенции ISDA; обе котировки попадают в результат и в Excel контракта.
+* Достаточно `CDS_VERSION=0.6.0`, `docker compose pull` и `docker compose up -d --no-build`; схема БД и `.env`
+  не меняются.
 
 ### Переход на 0.5.1 (новый сертификат Мосбиржи)
 
@@ -201,7 +208,7 @@ docker compose exec -T postgres pg_restore -U postgres -d cds --clean --if-exist
 На машине с образами:
 
 ```bash
-docker save -o cds-images.tar local/cds-admin:0.5.1 local/cds-curves:0.5.1 local/cds-credit:0.5.1 local/cds-web-shell:0.5.1 local/cds-web-mfe-admin:0.5.1 local/cds-web-mfe-curves:0.5.1 local/cds-web-mfe-credit:0.5.1
+docker save -o cds-images.tar local/cds-admin:0.6.0 local/cds-curves:0.6.0 local/cds-credit:0.6.0 local/cds-web-shell:0.6.0 local/cds-web-mfe-admin:0.6.0 local/cds-web-mfe-curves:0.6.0 local/cds-web-mfe-credit:0.6.0
 ```
 
 В контуре (в `.env` оставьте `CDS_IMAGE_PREFIX=local`):
