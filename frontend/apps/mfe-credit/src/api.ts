@@ -25,6 +25,13 @@ import type {
   RateCurveDef,
   Settings,
   Snapshot,
+  TradeDetail,
+  TradeInput,
+  TradeSchedule,
+  TradeSearch,
+  TradeTerms,
+  TradeValuation,
+  TradesMeta,
   Version,
 } from './types'
 
@@ -113,6 +120,23 @@ export const api = {
       contract: (req: CdsContractRequest) => downloadFile(`${BASE}/cds/calculator/export.xlsx`, { body: req }),
       daily: (date: string) => downloadFile(`${BASE}/cds/daily.xlsx?date=${date}`),
     },
+  },
+  trades: {
+    meta: () => http().get<TradesMeta>(`${BASE}/cds/trades/meta`),
+    tags: (q?: string) => http().get<{ name: string; trades: number }[]>(`${BASE}/cds/trades/tags`, { q }),
+    schedule: (t: TradeTerms) => http().post<TradeSchedule>(`${BASE}/cds/trades/schedule`, t),
+    search: (q: { date?: string; q?: string; entity?: string; tag?: string[]; side?: string; status?: string }) =>
+      http().get<TradeSearch>(`${BASE}/cds/trades`, q),
+    get: (id: string) => http().get<TradeDetail>(`${BASE}/cds/trades/${enc(id)}`),
+    create: (t: TradeInput) => http().post<TradeDetail>(`${BASE}/cds/trades`, t),
+    update: (id: string, t: TradeInput) => http().put<TradeDetail>(`${BASE}/cds/trades/${enc(id)}`, t),
+    cancel: (id: string) => http().post<TradeDetail>(`${BASE}/cds/trades/${enc(id)}/cancel`),
+    restore: (id: string) => http().post<TradeDetail>(`${BASE}/cds/trades/${enc(id)}/restore`),
+    revalue: (id: string, date?: string) =>
+      http().post<TradeDetail>(`${BASE}/cds/trades/${enc(id)}/revalue${date ? `?date=${date}` : ''}`),
+    revalueAll: (date?: string) =>
+      http().post<{ date: string; valued: number; skipped: string[] }>(`${BASE}/cds/trades/revalue${date ? `?date=${date}` : ''}`),
+    valuations: (id: string, date?: string) => http().get<TradeValuation[]>(`${BASE}/cds/trades/${enc(id)}/valuations`, { date }),
   },
   calendars: {
     list: () => http().get<CalendarInfo[]>(`${BASE}/calendars`),

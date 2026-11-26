@@ -294,6 +294,10 @@ class CdsApp:
         audit.record(self.s, actor=actor, entity_type="cds_curve", entity_id=entity.code, action="state_save",
                      summary=f"Рассчитана CDS-кривая {entity.code} на {as_of} ({TRIGGERS.get(trigger, trigger)})",
                      changes={"par_spread_bp": {"old": before, "new": self._summary(result)}})
+        self.s.flush()
+        from .trades import enqueue_revaluation  # trades depend on this module
+
+        enqueue_revaluation(self.s, entity, None, "cds_curve", actor)
         return state
 
     def save_history(self, entity: CdsEntity, inputs: dict, result: dict, trigger: str, actor: Principal) -> CdsHistory:
@@ -305,6 +309,10 @@ class CdsApp:
         audit.record(self.s, actor=actor, entity_type="cds_curve", entity_id=entity.code, action="history_edit",
                      summary=f"Изменение задним числом: CDS-кривая {entity.code} на {as_of}, версия {latest + 1}",
                      changes={"par_spread_bp": self._summary(result)}, tags=[TAG_BACKDATED])
+        self.s.flush()
+        from .trades import enqueue_revaluation  # trades depend on this module
+
+        enqueue_revaluation(self.s, entity, as_of, "backdated", actor)
         return row
 
     def recalc_entity(self, code: str, actor: Principal, trigger: str = "manual", rates: dict[str, Any] | None = None) -> CdsState:

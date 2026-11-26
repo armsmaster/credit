@@ -284,3 +284,86 @@ class RateSnapshot(Base):
     day_count: Mapped[str] = mapped_column(Text)
     nodes: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+# ------------------------------------------------------------------ CDS trades and their valuations
+class TradeTag(Base):
+    """Free-form tag of trades (for search); unique case-insensitively."""
+
+    __tablename__ = "trade_tags"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CdsTrade(Base):
+    """A CDS trade; its economic terms live in versions (every edit creates a new one)."""
+
+    __tablename__ = "cds_trades"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    external_id: Mapped[str] = mapped_column(Text, unique=True)  # id of the same trade in external systems
+    entity_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cds_entities.id"))
+    version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(Text, default="active")  # active | cancelled
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_by: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class CdsTradeTag(Base):
+    __tablename__ = "cds_trade_tags"
+
+    trade_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cds_trades.id", ondelete="CASCADE"), primary_key=True)
+    tag_id: Mapped[int] = mapped_column(ForeignKey("trade_tags.id", ondelete="CASCADE"), primary_key=True)
+
+
+class CdsTradeVersion(Base):
+    __tablename__ = "cds_trade_versions"
+    __table_args__ = (UniqueConstraint("trade_id", "version", name="uq_cds_trade_version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    trade_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cds_trades.id", ondelete="CASCADE"))
+    version: Mapped[int] = mapped_column(Integer)
+    external_id: Mapped[str] = mapped_column(Text)
+    entity_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cds_entities.id"))
+    side: Mapped[str] = mapped_column(Text)  # buyer | seller (of protection)
+    notional: Mapped[float] = mapped_column(Float)
+    coupon_bp: Mapped[float] = mapped_column(Float)
+    trade_date: Mapped[date] = mapped_column(Date)
+    effective_date: Mapped[date] = mapped_column(Date)
+    maturity: Mapped[date] = mapped_column(Date)
+    rebate: Mapped[bool] = mapped_column(Boolean)
+    schedule_params: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    schedule: Mapped[dict[str, Any]] = mapped_column(JSONB)  # rows (possibly hand-edited), rebate, settlement date
+    schedule_edited: Mapped[bool] = mapped_column(Boolean, default=False)
+    tags: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    comment: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CdsTradeValuation(Base):
+    """Theoretical value of a trade on a date; every recalculation is a new row, the latest one of a date wins."""
+
+    __tablename__ = "cds_trade_valuations"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    trade_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("cds_trades.id", ondelete="CASCADE"))
+    trade_version: Mapped[int] = mapped_column(Integer)
+    valuation_date: Mapped[date] = mapped_column(Date)
+    kind: Mapped[str] = mapped_column(Text)  # intraday | eod
+    trigger: Mapped[str] = mapped_column(Text)  # trade_saved | cds_curve | backdated | eod | manual
+    calculated_by: Mapped[str] = mapped_column(Text)
+    calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    curve_date: Mapped[date] = mapped_column(Date)
+    npv: Mapped[float] = mapped_column(Float)
+    clean: Mapped[float] = mapped_column(Float)
+    accrued: Mapped[float] = mapped_column(Float)
+    par_spread_bp: Mapped[float] = mapped_column(Float)
+    rpv01: Mapped[float] = mapped_column(Float)
+    cs01: Mapped[float] = mapped_column(Float)
+    details: Mapped[dict[str, Any]] = mapped_column(JSONB)

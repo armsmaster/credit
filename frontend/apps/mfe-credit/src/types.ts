@@ -522,3 +522,166 @@ export interface CdsContractResult extends CdsContract {
   warnings: string[]
   conventions: Record<string, string>
 }
+
+// ------------------------------------------------------------------ CDS trades
+export type Bdc = 'following' | 'modified_following' | 'preceding' | 'unadjusted'
+
+export interface TradeScheduleParams {
+  mode: 'standard' | 'custom'
+  frequency_months: 1 | 3 | 6 | 12
+  direction: 'backward' | 'forward'
+  stub: 'short' | 'long'
+  roll_day: number | null
+  bdc: Bdc
+  adjust_accrual: boolean
+  calendar: string | null
+  day_count: 'ACT/ACT.ISDA' | 'ACT/365F' | 'ACT/360'
+  last_period_inclusive: boolean
+}
+
+export interface TradeRow {
+  accrual_start: string
+  accrual_end: string
+  pay_date: string
+  days?: number
+  year_frac?: number
+  amount: number | null
+  manual: boolean
+}
+
+export interface TradeTerms {
+  side: 'buyer' | 'seller'
+  notional: number | null
+  coupon_bp: number | null
+  trade_date: string | null
+  effective_date?: string | null
+  maturity: string | null
+  rebate: boolean
+  schedule_params: TradeScheduleParams
+  rows?: TradeRow[] | null
+}
+
+export interface TradeInput extends TradeTerms {
+  external_id: string
+  entity_code: string
+  tags: string[]
+  comment: string
+}
+
+export interface TradeSchedule {
+  rows: TradeRow[]
+  edited: boolean
+  effective_date: string
+  settle_date: string
+  first_period_start: string | null
+  rebate_start: string | null
+  rebate_end: string | null
+  rebate_year_frac: number
+  rebate_amount: number
+  total_amount: number
+  schedule_params: TradeScheduleParams
+}
+
+export interface TradeValuation {
+  id: number
+  valuation_date: string
+  kind: 'intraday' | 'eod'
+  trigger: string
+  trigger_title: string
+  calculated_at: string
+  calculated_by: string
+  trade_version: number
+  curve_date: string
+  npv: number
+  clean: number
+  accrued: number
+  par_spread_bp: number
+  rpv01: number
+  cs01: number
+  details: {
+    protection_pv: number
+    premium_pv: number
+    survival_to_maturity: number
+    pd: number
+    recovery: number
+    default_payment: number
+    protection_start: string
+    curve_date: string
+    curve_kind: string
+    stale_days: number
+    discount: { code: string; as_of_date: string }
+    next_payment: { date: string; amount: number } | null
+  }
+}
+
+export interface TradeSummary {
+  id: string
+  external_id: string
+  status: 'active' | 'cancelled'
+  version: number
+  entity_code: string
+  entity_name: string
+  side: 'buyer' | 'seller'
+  notional: number
+  coupon_bp: number
+  trade_date: string
+  effective_date: string
+  maturity: string
+  rebate: boolean
+  schedule_mode: 'standard' | 'custom'
+  schedule_edited: boolean
+  comment: string
+  updated_at: string
+  updated_by: string
+  tags: string[]
+  life?: 'alive' | 'matured' | 'not_started'
+  valuation?: TradeValuation | null
+}
+
+export interface TradeSearch {
+  date: string
+  items: TradeSummary[]
+  totals: { trades: number; valued: number; npv: number; cs01: number; notional_bought: number; notional_sold: number }
+}
+
+export interface TradeVersionInfo {
+  version: number
+  created_by: string
+  created_at: string
+  notional: number
+  coupon_bp: number
+  maturity: string
+  side: string
+  schedule_edited: boolean
+  tags: string[]
+  comment: string
+}
+
+export interface TradeDetail extends TradeSummary {
+  created_at: string
+  created_by: string
+  schedule_params: TradeScheduleParams
+  schedule: {
+    rows: TradeRow[]
+    settle_date: string
+    rebate_start: string | null
+    rebate_end: string | null
+    rebate_year_frac: number
+    rebate_amount: number
+    total_amount: number
+  }
+  versions: TradeVersionInfo[]
+  valuations: TradeValuation[]
+  valuation_records: number
+  latest_valuation: TradeValuation | null
+}
+
+export interface TradesMeta {
+  today: string
+  previous_business_day: string
+  business_calendar: string
+  calendars: CalendarInfo[]
+  defaults: { coupon_bp: number; calendar: string; day_count: TradeScheduleParams['day_count'] }
+  entities: { code: string; name: string; standard_coupon_bp: number }[]
+  triggers: Record<string, string>
+}

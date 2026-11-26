@@ -397,8 +397,10 @@ def cds_legs(sched: Schedule, valuation: date, recovery: float, conv: Convention
 
     if valuation <= sched.trade_date:
         acc = sched.rebate_year_frac
-    else:  # accrued of an existing trade at step-in
-        cur = next((p for p in sched.periods if p.accrual_start <= valuation < p.accrual_end + one), None)
+    else:  # accrued of an existing trade: from the start of the period containing the step-in date (ISDA)
+        last = sched.periods[-1] if sched.periods else None
+        cur = next((p for p in sched.periods
+                    if p.accrual_start <= step_in < (p.accrual_end + one if p is last and conv.last_period_inclusive else p.accrual_end)), None)
         acc = DAY_COUNTS[conv.day_count](cur.accrual_start, step_in) if cur else 0.0
     settle = sched.upfront_settle_date if valuation <= sched.trade_date else valuation
     return LegValues(prot, rpv, acc, dc.df(settle), prot_start, step_in, coupons)

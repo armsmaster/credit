@@ -5,6 +5,7 @@ Default schedules (business timezone, editable by admins):
   credit.refresh_prices  every 15 min 09:00-19:45 Mon-Fri   snapshots, candles, DEMA
   credit.close_day       19:50 Mon-Fri     values at 19:00 into the daily history
   credit.archive_states  00:35 every night current credit curves -> history
+  credit.trades_eod      23:45 every day (business days only)  end-of-day values of CDS trades
 """
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ from cds_common.tasks import TaskContext, TaskRegistry
 
 from .application import CreditApp
 from .cds.application import CdsApp
+from .cds.trades import TradeApp
 from .config import get_settings
 from .iss import IssClient
 from .market import MarketData
@@ -127,3 +129,35 @@ def cds_recalculate(ctx: TaskContext) -> dict:
 def cds_rates_changed(ctx: TaskContext) -> dict:
     with ctx.session_factory() as session:
         return CdsApp(session, get_settings()).on_rates(ctx.params, ctx.actor)
+
+
+@registry.task(
+    "credit.trades_revalue",
+    title="Переоценка сделок CDS после пересчёта CDS-кривой",
+    description=(
+        "Ставится автоматически при сохранении CDS-кривой контрольного лица (после кредитной или процентной кривой): "
+        "оценивает его действующие сделки. Параметры: entity_code, as_of (дата CDS-кривой задним числом; пусто — сегодня), trigger."
+    ),
+)
+def trades_revalue(ctx: TaskContext) -> dict:
+    s = get_settings()
+    raw = ctx.params.get("as_of")
+    with ctx.session_factory() as session:
+        return TradeApp(session, s).revalue(date.fromisoformat(raw) if raw else s.today(), ctx.params.get("trigger") or "cds_curve",
+                                            ctx.actor, entity_code=ctx.params.get("entity_code"))
+
+
+@registry.task(
+    "credit.trades_eod",
+    title="Оценка сделок CDS на конец дня",
+    description=(
+        "Теоретическая стоимость всех действующих сделок на дату (по умолчанию сегодня) по последней CDS-кривой "
+        "не позже этой даты; в нерабочие дни календаря «Москва» пропускается. Параметр: date."
+    ),
+    default_schedule="45 23 * * *",
+)
+def trades_eod(ctx: TaskContext) -> dict:
+    s = get_settings()
+    raw = ctx.params.get("date")
+    with ctx.session_factory() as session:
+        return TradeApp(session, s).end_of_day(date.fromisoformat(raw) if raw else s.today(), ctx.actor)
