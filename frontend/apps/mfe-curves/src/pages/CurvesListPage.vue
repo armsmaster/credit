@@ -8,6 +8,9 @@
         <template #prefix><el-icon><Search /></el-icon></template>
       </el-input>
       <div class="spacer" />
+      <el-tooltip content="Открытый API (без авторизации, только чтение): модельные миды свопов на котируемых сроках — онлайн и за дату. Описание и проверка запросов — в Swagger">
+        <el-button tag="a" href="/api/curves/public/docs" target="_blank" rel="noopener"><el-icon><Link /></el-icon>&nbsp;API модельных цен</el-button>
+      </el-tooltip>
       <router-link v-if="isOperator" to="/curves/new">
         <el-button type="primary"><el-icon><Plus /></el-icon>&nbsp;Новая кривая</el-button>
       </router-link>

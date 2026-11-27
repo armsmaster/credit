@@ -2,14 +2,17 @@
   <div>
     <div class="page-toolbar">
       <h2>CDS-кривые</h2>
-      <span class="muted">Считаются автоматически по кредитным кривым облигаций при каждом сохранении кредитной или процентной кривой</span>
       <div class="spacer" />
       <el-date-picker v-model="exportDate" type="date" value-format="YYYY-MM-DD" style="width: 150px" :clearable="false" />
       <el-tooltip content="Итоги дня для position keeping системы: дисконт-факторы, дожитие и hazard rate по месяцам, CDS-котировки по срокам">
         <el-button :loading="exporting" @click="exportDaily"><el-icon><Download /></el-icon>&nbsp;Файл для position keeping</el-button>
       </el-tooltip>
+      <el-tooltip content="Открытый API (без авторизации, только чтение): par spread, QS и PUF на стандартных сроках — онлайн и за дату. Описание и проверка запросов — в Swagger">
+        <el-button tag="a" href="/api/credit/public/docs" target="_blank" rel="noopener"><el-icon><Link /></el-icon>&nbsp;API модельных цен</el-button>
+      </el-tooltip>
       <el-button v-if="isOperator" type="primary" @click="openDialog(null)"><el-icon><Plus /></el-icon>&nbsp;Контрольное лицо</el-button>
     </div>
+    <p class="muted intro">Считаются автоматически по кредитным кривым облигаций при каждом сохранении кредитной или процентной кривой.</p>
     <el-alert v-if="!loading && !items.length" type="info" :closable="false" show-icon class="mb"
       title="Добавьте контрольное лицо и выберите кредитную кривую, по которой оно оценивается." />
     <el-table v-loading="loading" :data="items" stripe @row-click="(r: CdsEntity) => router.push(`/credit/cds/${encodeURIComponent(r.code)}`)">
@@ -120,6 +123,10 @@ onMounted(load)
 </script>
 
 <style scoped>
+.intro {
+  margin: -4px 0 12px;
+  font-size: 13px;
+}
 .page-toolbar {
   display: flex;
   align-items: center;

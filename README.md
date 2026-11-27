@@ -191,6 +191,33 @@ Realm импортируется из `infra/keycloak/realm-cds.json` тольк
 
 Подробно — [docs/cds-pricing.md](docs/cds-pricing.md).
 
+## Открытый API модельных цен
+
+Модельные цены публикуются без авторизации (только чтение) — для внешних систем. У каждого сервиса свой Swagger
+только с публичными методами; в UI на них ведут кнопки «API модельных цен» в разделах «Процентные кривые» и «CDS-кривые».
+
+| Что | Метод | Swagger |
+|---|---|---|
+| Модельные миды процентных свопов — par-ставки на котируемых сроках каждой кривой, % годовых | `GET /api/curves/public/v1/swaps`, `GET /api/curves/public/v1/swaps/{code}` | `/api/curves/public/docs` |
+| Модельные котировки CDS на стандартных сроках — par spread (модельный мид), QS, PUF при стандартных купонах | `GET /api/credit/public/v1/cds`, `GET /api/credit/public/v1/cds/{code}` | `/api/credit/public/docs` |
+
+* **онлайн** — без параметров: текущая кривая (пересчитывается при каждом сохранении кривых);
+* **за дату** — `?date=YYYY-MM-DD`: кривая, действовавшая на дату (последняя построенная не позже неё); если на саму
+  дату кривой нет, в ответе `stale: true`, а `as_of_date` — дата показанной кривой;
+* фильтр по кодам — `?curve=RUB-RUONIA-OIS&curve=RUB-KEYRATE` и `?entity=VEB&entity=GAZP`.
+
+```bash
+curl "http://localhost:8080/api/curves/public/v1/swaps/RUB-RUONIA-OIS?date=2026-11-20"
+```
+
+```json
+{"curve": "RUB-RUONIA-OIS", "currency": "RUB", "as_of_date": "2026-11-20", "requested_date": "2026-11-20", "stale": false,
+ "kind": "history", "version": 1, "quotes": [{"tenor": "1W", "maturity": "2026-11-27", "model_mid_pct": 13.904}, "…"]}
+```
+
+Публичные методы доступны всем, кто видит gateway: в контуре это внутренняя сеть банка. Закрытые методы
+по-прежнему требуют токен.
+
 API документирован в Swagger: `/api/curves/docs`, `/api/credit/docs`, `/api/admin/docs`.
 
 ## Разработка

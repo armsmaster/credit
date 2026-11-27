@@ -82,3 +82,26 @@ def create_app(settings: CommonSettings, routers: Iterable[APIRouter], *, title:
     for router in routers:
         app.include_router(router, prefix=prefix)
     return app
+
+
+def mount_public_api(app: FastAPI, routers: Iterable[APIRouter], *, title: str, description: str, version: str = "1") -> FastAPI:
+    """Open read-only API of a service: a separate application under {api_prefix}/public with its own Swagger
+    ({api_prefix}/public/docs) that lists only these endpoints. No token is checked — put only read-only,
+    publishable data here."""
+    from starlette.routing import Mount
+
+    settings: CommonSettings = app.state.settings
+    public = FastAPI(title=title, description=description, version=version, docs_url="/docs", openapi_url="/openapi.json",
+                     redoc_url=None, swagger_ui_parameters={"defaultModelsExpandDepth": 0, "displayRequestDuration": True})
+    public.state.settings = settings
+    public.state.db = app.state.db
+    for router in routers:
+        public.include_router(router)
+
+    @public.exception_handler(AppError)
+    async def public_app_error(_: Request, exc: AppError):
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail, "code": exc.code})
+
+    # before the service's own routes, so that none of their path parameters can capture /public/...
+    app.router.routes.insert(0, Mount(f"{settings.api_prefix}/public", app=public))
+    return public

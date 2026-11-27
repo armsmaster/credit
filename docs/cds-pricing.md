@@ -153,6 +153,10 @@ PUF = 0. QS ≠ par spread: у par spread — модельная кривая и
 Проверки (столбец «Расхождение») подсвечиваются красным при отклонении больше допуска (10<sup>−8</sup>,
 для процентов и рублей 10<sup>−6</sup>); на тестовых данных расхождения ~10<sup>−13</sup>.
 
+Котировки по стандартным срокам (par spread, QS, PUF) публикуются и через открытый API без авторизации:
+`GET /api/credit/public/v1/cds[?date=YYYY-MM-DD]`, Swagger — `/api/credit/public/docs` (кнопка «API модельных цен»
+на странице CDS-кривых; подробнее — README).
+
 ## 8. Файл для position keeping
 
 `GET /api/credit/cds/daily.xlsx?date=YYYY-MM-DD` (кнопка на странице CDS-кривых) — плоские таблицы без формул,
